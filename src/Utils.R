@@ -1,16 +1,44 @@
 source(file = "Packages.R")
 
-# Simulation Function ----- 
-# Here we define a function to sample from the underlying process 
-
-
-
-
 # Basis Construction ------
 # Here we define a function to define the cubic splines 
-# x <- runif(100) * 2* pi
-# equi <- seq(0, 2*pi, by = 2*pi/20)
-# basis <- bs(x, knots = equi[2:20], Boundary.knots = c(0, 2*pi))
+
+# 
+# library(mgcv)
+# x <- runif(50) * 2* pi
+# 
+# sx <- s(x, bs = "bs", k = 16, m = 3)
+# smooth <- smoothCon(sx, data = data.frame(x = x), absorb.cons = F)
+# smooth[[1]]$knots # prints the knots
+# par(mfrow = c(1, 1))
+# smooth[[1]]$X |> matplot(type = "l") # shows the basis functions
+# 
+
+
+Basis_Construction <- function(thetas, L, degree = 3){
+  # I do not like to use already implemented function because they are based
+  # on the range of the vector to define the knots so every iteration of the MCMC
+  # we could have different basis following this approach
+  
+  # thetas: --> vector of theta values where to evaluate the basis 
+  # L: --> how many internal knots do we want?
+  # degree: --> spline degree
+  
+  # The idea of this function is the following. Given the fact that I want the starting value in 0 
+  # and the end point in 2 \pi, I first define equispaced knots on this interval. Then, we habe to
+  # add padding on the left and on the right. A conservative choice would be to add degree times 0 before 
+  # and degree times 2\pi after. Talking with Johannes, I understood that the best approach to have 
+  # meaningfull penalties is to have equispaced knots also on the left and right part of the interval
+  delta <- (2 * pi) / L # equispaced shift 
+  
+  knots_base <- seq(0, 2 * pi, by = delta)[-c(1, L+1)] # base knots
+  
+  total_knots <- c(seq(0 - degree*delta, 0, by = delta), knots_base, seq(2*pi , 2*pi + degree*delta, 
+                                                                         by = delta))
+  Basis <- splineDesign(total_knots, thetas, ord = degree + 1, outer.ok = FALSE) # Basis construction
+  # At the End we obtain a matrix of size length(theta) x (L + degree)
+  return(Basis)
+}
 
 
 
@@ -36,5 +64,4 @@ K2_construction <- function(J){ # symmetry constraint
   return(I - R_J)
 }
 
-K1_construction(21)
-K2_construction(21)
+# Simulation Function ----
