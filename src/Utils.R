@@ -101,7 +101,7 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   B_sim <- Basis_Construction(thetas, L = n_int_knots, degree = degree) # Basis lenght(thetas) X n_basis
   K1 <- K1_construction(n_basis) # smoothness
   K2 <- K2_construction(n_basis) # symmetry 
-  K <- K1 + 2*K2
+  K <- K1 + K2
   P <- (1/(tau^2))*K # Precision Matrix
   if (length(beta_values) == 1 ) { # the user can supply the values of beta
     beta_values <- rmvnorm_rd(n = 1, mu = rep(0, n_basis), P, tol = 1e-7)
@@ -169,8 +169,164 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   final_param$mu_i <- mu_i
   final_param$Sigma_e <- Sigma_e
   final_param$X <- X
+  final_param$betas <- beta_values
   
   return(final_param)
 
 }
 
+
+# MCMC Util functions ----
+
+init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, n){
+  # n --> number of units 
+  param <- list()
+  param$n <- n
+  param$tau <- tau
+  param$lambdas <- lambdas
+  param$thetas <- thetas
+  param$betas <- as.matrix(betas)
+  param$Sigma <- Sigma 
+  param$eta <- eta
+  param$alphas <- alphas
+  param$r <- numeric(length(thetas)) # deterministic
+  param$mean <- matrix(0, nrow = length(thetas), ncol = 2) #deterministic
+  param$mean_i <- array(0, dim = c(length(thetas), 2, n))
+  param$R <- array(NA, dim = c(2, 2, n))
+  
+  param$Sigma_inv <- solve(param$Sigma)
+  param$Q_R <- array(NA, dim = c(2, 2, n))
+  param$residual <-  array(NA, dim = c(2, 2, n))
+  
+  return(param)
+}
+
+hyperparameters <- function(a_tau, b_tau, n_basis, degree,
+                            width_theta = pi/4, tol = 1e-7){
+  
+  hyper <- list()
+  # tau block -----
+  hyper$a_tau <- a_tau
+  hyper$b_tau <- b_tau
+  hyper$a_new <- 0
+  hyper$b_new <- 0
+  
+  # Basis block -----
+  hyper$n_basis <- n_basis
+  hyper$degree <- degree
+  J <- n_basis + degree # find the number of basis
+  K1 <- K1_construction(J) # construct K1
+  K2 <- K2_construction(J) #construct K2
+  hyper$K <- (K1 + K2)
+  hyper$L <- qr(hyper$K)$rank
+  eig_vals <- eigen(hyper$K, symmetric = TRUE)$values
+  hyper$L <- sum(eig_vals > tol) # approximation for the normal distribution
+  
+  # Theta block -----
+  hyper$width_theta <- width_theta
+  hyper$log_theta <- 0
+  
+  # Lambda block ----
+  hyper$width_lambda <- width_theta
+  hyper$log_lambda <- 0
+  return(hyper)
+}
+
+create_output <- function(mcmc_iter, k_l, n){
+  output <- list()
+  output$tau <- numeric(mcmc_iter)
+  output$theta <- matrix(NA, nrow = mcmc_iter, ncol = k_l)
+  output$lambdas <- matrix(NA, nrow = mcmc_iter, ncol = n)
+  return(output)
+}
+
+mean_constructor <- function(n_basis, degree, init_param, X){
+  # n_basis --> number of internal knots
+  # degree --> degree of the polynomial
+  
+  n <- dim(init_param$mean_i)[3]
+  B_sim <- Basis_Construction(init_param$thetas, n_basis, degree) # build the basis with the current value of theta
+  init_param$r <- exp(B_sim %*% as.vector(init_param$betas))# compute the current value of the radius
+  mu_mean_x <- init_param$r*cos(init_param$thetas)
+  mu_mean_y <- init_param$r*sin(init_param$thetas)
+  init_param$mean <- cbind(mu_mean_x, mu_mean_y) # average configuration 
+  
+  for (i in 1:n) { # compute rotation matrix 
+    init_param$R[,,i] <- matrix(c(cos(init_param$lambdas[i]), -sin(init_param$lambdas[i]), 
+                                  sin(init_param$lambdas[i]), cos(init_param$lambdas[i])), 
+                                byrow = T, nrow = 2, ncol = 2)
+    eta_matrix <- matrix(init_param$eta[i,], nrow = length(init_param$thetas), ncol = 2, byrow = T)
+    init_param$mean_i[,,i] <- init_param$alphas[i]*init_param$mean%*%init_param$R[,,i] + eta_matrix # compute the mean configuration for every unit
+    init_param$Q_R[,,i] <- (1/(init_param$alphas[i]^2)) *t(init_param$R[,,i])%*%init_param$Sigma_inv%*%init_param$R[,,i] 
+    init_param$residual[,,i] <- t(X[,,i] - init_param$mean_i[,,i])%*%(X[,,i] - init_param$mean_i[,,i])
+  }
+  return(init_param)
+}
+
+
+
+gg_mcmc_diagnostics <- function(data, param_name = "NA", real_values = "NA") {
+  
+  if (is.null(dim(data))) {
+    data <- matrix(data, ncol = 1)
+    colnames(data) <- param_name
+  } else if (is.null(colnames(data))) {
+    colnames(data) <- paste(param_name, 1:ncol(data))
+  }
+  
+  plot_list <- list()
+  n_iter <- nrow(data)
+  i <- 1
+  for (col in colnames(data)) {
+    chain <- data[, col]
+    
+    ess_val <- round(LaplacesDemon::ESS(chain), 1)
+    quantiles <- quantile(chain, probs = c(0.025, 0.975))
+    mean_val <- mean(chain)
+    
+    df <- data.frame(
+      Iteration = 1:n_iter,
+      Value = chain
+    )
+    p <- ggplot(df, aes(x = Iteration, y = Value)) +
+      annotate("rect", xmin = -Inf, xmax = Inf, 
+               ymin = quantiles[1], ymax = quantiles[2], 
+               fill = "#3182bd", alpha = 0.15) +
+      geom_line(color = "gray25", linewidth = 0.4) +
+      geom_hline(yintercept = mean_val, color = "#e41a1c", 
+                 linetype = "dashed", linewidth = 0.8) +
+      geom_hline(yintercept = quantiles[1], color = "#3182bd", linetype = "dotted") +
+      geom_hline(yintercept = quantiles[2], color = "#3182bd", linetype = "dotted") +
+      annotate("label", x = Inf, y = Inf, 
+               label = paste("ESS:", ess_val), 
+               hjust = 1.1, vjust = 1.1, 
+               fill = "white", alpha = 0.85, 
+               fontface = "bold", size = 3.5, color = "gray10") +
+      labs(
+        title = paste("Traceplot of", col),
+        subtitle = paste0("95% Credibility Interval: [", 
+                          round(quantiles[1], 4), ", ", 
+                          round(quantiles[2], 4), "]"),
+        x = "Iteration",
+        y = "Value"
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        plot.title = element_text(face = "bold", color = "gray10"),
+        plot.subtitle = element_text(color = "gray40", size = 9),
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(color = "gray92")
+      )
+    if (all(!is.na(real_values)) ) {
+      p <- p + geom_hline(yintercept = real_values[i], color = "cyan", 
+                          linetype = "dashed", linewidth = 0.8)
+    }
+    plot_list[[col]] <- p
+    i <- i + 1
+    }
+  if (length(plot_list) == 1) {
+    return(plot_list[[1]])
+  } else {
+    return(plot_list)
+  }
+}
