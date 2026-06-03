@@ -19,6 +19,7 @@ RB_MCMC <- function(total_iter, burnin, thinning,
   
   mcmc_iter <- floor((total_iter - burnin)/thinning) # how many iterations do we need to save?
   k_l <- dim(X)[1] # number of landmarks
+  n <- init$n
   output <- create_output(mcmc_iter, k_l, init$n) # create the output list
   pb <- txtProgressBar(min = 1, max = mcmc_iter, style = 3, char = "*")
   thin <- burnin
@@ -33,18 +34,22 @@ RB_MCMC <- function(total_iter, burnin, thinning,
       hyper$b_new <- (t(init$betas)%*%hyper$K%*%init$betas)/2+ hyper$b_tau # scale parameter 
       init$tau <- sample_tau(hyper$a_new, hyper$b_new) # sample new tau^2
       
+      # Sigma update ---- 
+      app_sigma <- sample_Sigma(init, hyper, k_l)
+      init <- app_sigma$init
+      hyper <- app_sigma$hyper
+      # print(init$thetas)
+      
       # theta update ----
-      hyper$log_theta <- log_density_theta(init) # log-density
+      hyper$log_lik <- log_density(init)
       app_theta <- sample_theta(init, hyper, X)
       init <- app_theta$init
       hyper <- app_theta$hyper
-      
+
       # lambda update -----
-      hyper$log_lambda <- log_density_lambda(init)
-      app_lambda <- sample_lambda(init, hyper, X)
+      app_lambda <- sample_lambda(init, hyper, X, k_l)
       init <- app_lambda$init
       hyper <- app_lambda$hyper
-      # print(init$thetas)
       
     }
     if(i == 1){ # for the first iteration we are doing burnin, then we are doing thinning
@@ -53,6 +58,7 @@ RB_MCMC <- function(total_iter, burnin, thinning,
     output$tau[i] <- init$tau
     output$theta[i,] <- init$thetas
     output$lambdas[i,] <- init$lambdas
+    output$Sigma[i,,] <- init$Sigma
     setTxtProgressBar(pb, value = i, title = "Ziocan")
     
   }
@@ -63,10 +69,14 @@ RB_MCMC <- function(total_iter, burnin, thinning,
   
 }
 init$Q_R
-init <- init_param(0.01, runif(n = 100)*2*pi, runif(n = 25)*2*pi, sam$betas, sam$Sigma_e, sam$eta,sam$alphas, n <- dim(sam$X)[3])
-hyper <- hyperparameters(0.01, 0.01, 10, 3, width_theta = pi, m = 2)
+init <- init_param(0.01, runif(n = 100)*2*pi, sort(runif(n = 25)*2*pi), sam$betas, diag(2, nrow = 2),
+                   sam$eta,sam$alphas, n <- dim(sam$X)[3])
+# init <- init_param(0.01, sam$lambda, sam$theta, sam$betas, diag(1, nrow = 2),
+#                    sam$eta,sam$alphas, n <- dim(sam$X)[3])
+hyper <- hyperparameters(0.01, 0.01, 10, 3, width_theta = 1, m = 6, nu = 4,
+                         psi = diag(0.01,2))
 tic()
-MCMC_samp <- RB_MCMC(total_iter = 15000, burnin = 100, thinning  = 30, X <- sam$X, 
+MCMC_samp <- RB_MCMC(total_iter = 15000, burnin = 300, thinning  = 10, X <- sam$X, 
                      init = init, hyper = hyper)
 toc()
 gcinfo(FALSE)
@@ -78,10 +88,18 @@ init$Q_R
 sam$theta
 sam$lambda
 
+20*0.31
+2*pi
 gg_mcmc_diagnostics(MCMC_samp$output$tau, param_name = "tau", real_values = sam$tau^2)
-gg_mcmc_diagnostics(MCMC_samp$output$theta, param_name = "theta", real_values = sam$theta)
-gg_mcmc_diagnostics(MCMC_samp$output$lambda, param_name = "lambda", real_values = sam$lambda)
+gg_mcmc_diagnostics(MCMC_samp$output$theta, param_name = "theta", real_values = sam$theta, TRUE)
+gg_mcmc_diagnostics(MCMC_samp$output$lambda, param_name = "lambda", real_values = sam$lambda, TRUE)
+Sigma_samp <- cbind(MCMC_samp$output$Sigma[,1,1], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,2,2])
+gg_mcmc_diagnostics(Sigma_samp, param_name = "Sigma", real_values = c(sam$Sigma_e), TRUE)
 
+apply(Sigma_samp, MARGIN = 2, quantile, probs = c(0.025, 0.975))
+sam$Sigma_e
+Sigma_samp <- cbind(MCMC_samp$output$Sigma[,1,1], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,2,2])
+dim(MCMC_samp$output$Sigma)
 
 X_new_i <- MCMC_samp$init$mean_i[,,3]
 par(mfrow = c(1, 4))

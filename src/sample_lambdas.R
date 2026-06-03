@@ -1,13 +1,5 @@
 # Sample the angle parameters -----
 
-log_density_lambda <- function(init){
-  val <- sum(init$Q_R[1,1,] * init$residual[1,1,] +
-               init$Q_R[1,2,] * init$residual[2,1,] +
-               init$Q_R[2,1,] * init$residual[1,2,] +
-               init$Q_R[2,2,] * init$residual[2,2,])
-  return(-0.5 * val)
-}
-
 eval_log_lik_i <- function(lambda_candidate, hyper, init, i, X) {
   # this function is just a wrap up to compute the contribution of the new element inside the log-lik
   lambda_mod <- lambda_candidate %% (2*pi)
@@ -30,10 +22,10 @@ eval_log_lik_i <- function(lambda_candidate, hyper, init, i, X) {
 
 
 
-sample_lambda <- function(init, hyper, X){
+sample_lambda <- function(init, hyper, X, k_l){
   # This function build the slice sampler for the angle parameters 
   n <- init$n # number of samples
-  k <- dim(X)[1] # number of landmarks
+  k <- k_l # number of landmarks
   # In this way, for each unit, we are decomposing the R^TSigma^-1R in three different elements
   m <- hyper$m
   w <- hyper$width_lambda
@@ -90,7 +82,7 @@ sample_lambda <- function(init, hyper, X){
         init$R[,,i] <- res_cand$R
         init$residual[, , i] <- t(res_cand$residual)%*%res_cand$residual
         init$Q_R[,,i] <- res_cand$Q_R
-        hyper$log_lambda <- hyper$log_lambda +  res_cand$log_lik - log_lik_i_old
+        hyper$log_lik <- hyper$log_lik +  res_cand$log_lik - log_lik_i_old
         bool <- FALSE
       } else {
         if (lambda_raw < init$lambdas[i]) {

@@ -1,16 +1,5 @@
 # Sample the angle parameters -----
 
-log_density_theta <- function(init){
-  # log_density_theta
-  
-  val <- sum(init$Q_R[1,1,] * init$residual[1,1,] +
-               init$Q_R[1,2,] * init$residual[2,1,] +
-               init$Q_R[2,1,] * init$residual[1,2,] +
-               init$Q_R[2,2,] * init$residual[2,2,])
-  return(-0.5 * val)
-}
-
-
 
 eval_log_lik_l <- function(theta_candidate, hyper, init, l, Q_R_11, Q_R_22, Q_R_12) {
   # this function is just a wrap up to compute the contribution of the new element inside the log-lik
@@ -99,7 +88,7 @@ sample_theta <- function(init, hyper, X){
         
         init$mean_i[l, 1, ] <- res_cand$mean_i_1
         init$mean_i[l, 2, ] <- res_cand$mean_i_2
-        hyper$log_theta <- hyper$log_theta - log_lik_l_old + res_cand$log_lik
+        hyper$log_lik <- hyper$log_lik - log_lik_l_old + res_cand$log_lik
         
         bool <- FALSE
       } else {

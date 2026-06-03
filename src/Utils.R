@@ -137,8 +137,8 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   }
   
   # Variance block ---- 
-  S <- matrix(c(2.8*1e-4, 0,
-                0, 2.1*1e-4), 2, 2)
+  S <- matrix(c(3.5*1e-4, 0,
+                0, 2.2*1e-4), 2, 2)
   
   Sigma_e <- riwish(4, S)# sample measurement error on the p x p
   #Sigma_e <- diag(2)*0.00035
@@ -147,7 +147,7 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
     # to sample we use the fact that X \sim MN(mu_{i}, I_k, Sigma)
     Sigmas <- alphas[i]^2 *t(R[,,i])%*%Sigma_e%*%R[,,i]
     I <- diag(K_l)
-    X[,,i] <- chol(I)%*%matrix(rnorm(n = K_l * 2), nrow = K_l, ncol = 2)%*%t(chol(Sigmas)) + mu_i[,,i]
+    X[,,i] <- chol(I)%*%matrix(rnorm(n = K_l * 2), nrow = K_l, ncol = 2)%*%chol(Sigmas) + mu_i[,,i]
     #X[,,i] <- chol(I)%*%matrix(rnorm(n = K_l * 2), nrow = K_l, ncol = 2)%*%t(chol(Sigma_e)) +  mu_i[,,i]
     }
   
@@ -202,7 +202,7 @@ init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, n){
 }
 
 hyperparameters <- function(a_tau, b_tau, n_basis, degree,
-                            width_theta = pi/4, m = 8, tol = 1e-7){
+                            width_theta = pi/4, m = 8, nu, psi, tol = 1e-7){
   
   hyper <- list()
   # tau block -----
@@ -225,11 +225,16 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   # Theta block -----
   hyper$width_theta <- width_theta
   hyper$m <- m # it is used to have a slice of size w*m
-  hyper$log_theta <- 0
   
   # Lambda block ----
   hyper$width_lambda <- width_theta
-  hyper$log_lambda <- 0
+  hyper$log_lik <- 0
+  
+  # Sigma block ----
+  hyper$nu <- nu
+  hyper$psi <- psi
+  hyper$nu_post <- 0
+  hyper$psi_post <- psi
   return(hyper)
 }
 
@@ -266,15 +271,31 @@ mean_constructor <- function(n_basis, degree, init_param, X){
 }
 
 
+log_density <- function(init){
+  val <- sum(init$Q_R[1,1,] * init$residual[1,1,] +
+               init$Q_R[1,2,] * init$residual[2,1,] +
+               init$Q_R[2,1,] * init$residual[1,2,] +
+               init$Q_R[2,2,] * init$residual[2,2,])
+  return(-0.5 * val)
+}
 
-gg_mcmc_diagnostics <- function(data, param_name = "NA", real_values = "NA") {
+
+
+gg_mcmc_diagnostics <- function(data, param_name = "NA", real_values = "NA" ,matrix_param = FALSE) {
   # This function is very useful to build fast plots for our model
   
   if (is.null(dim(data))) {
     data <- matrix(data, ncol = 1)
     colnames(data) <- param_name
   } else if (is.null(colnames(data))) {
-    colnames(data) <- paste(param_name, 1:ncol(data))
+    if (matrix_param == TRUE) {
+      colnames(data) <- paste(param_name, 1:ncol(data))
+    }
+    
+    else{
+      
+      
+    }
   }
   
   plot_list <- list()
