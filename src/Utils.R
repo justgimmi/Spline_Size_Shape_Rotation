@@ -191,8 +191,8 @@ init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, n){
   param$alphas <- alphas
   param$r <- numeric(length(thetas)) # deterministic
   param$mean <- matrix(0, nrow = length(thetas), ncol = 2) #deterministic
-  param$mean_i <- array(0, dim = c(length(thetas), 2, n))
-  param$R <- array(NA, dim = c(2, 2, n))
+  param$mean_i <- array(0, dim = c(length(thetas), 2, n))  # deterministic 
+  param$R <- array(NA, dim = c(2, 2, n)) #deterministic
   
   param$Sigma_inv <- solve(param$Sigma)
   param$Q_R <- array(NA, dim = c(2, 2, n))
@@ -202,7 +202,7 @@ init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, n){
 }
 
 hyperparameters <- function(a_tau, b_tau, n_basis, degree,
-                            width_theta = pi/4, tol = 1e-7){
+                            width_theta = pi/4, m = 8, tol = 1e-7){
   
   hyper <- list()
   # tau block -----
@@ -224,6 +224,7 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   
   # Theta block -----
   hyper$width_theta <- width_theta
+  hyper$m <- m # it is used to have a slice of size w*m
   hyper$log_theta <- 0
   
   # Lambda block ----
@@ -237,6 +238,7 @@ create_output <- function(mcmc_iter, k_l, n){
   output$tau <- numeric(mcmc_iter)
   output$theta <- matrix(NA, nrow = mcmc_iter, ncol = k_l)
   output$lambdas <- matrix(NA, nrow = mcmc_iter, ncol = n)
+  output$Sigma <- array(NA, dim = c(mcmc_iter, 2, 2))
   return(output)
 }
 
@@ -244,7 +246,7 @@ mean_constructor <- function(n_basis, degree, init_param, X){
   # n_basis --> number of internal knots
   # degree --> degree of the polynomial
   
-  n <- dim(init_param$mean_i)[3]
+  n <- init_param$n
   B_sim <- Basis_Construction(init_param$thetas, n_basis, degree) # build the basis with the current value of theta
   init_param$r <- exp(B_sim %*% as.vector(init_param$betas))# compute the current value of the radius
   mu_mean_x <- init_param$r*cos(init_param$thetas)
@@ -266,6 +268,7 @@ mean_constructor <- function(n_basis, degree, init_param, X){
 
 
 gg_mcmc_diagnostics <- function(data, param_name = "NA", real_values = "NA") {
+  # This function is very useful to build fast plots for our model
   
   if (is.null(dim(data))) {
     data <- matrix(data, ncol = 1)

@@ -57,7 +57,7 @@ plot(m)
 
 n_points <- 25
 # Create evenly spaced angles from 0 to almost 2*pi
-thetas <- seq(0, 2 * pi, length.out = n_points + 1)[-(n_points + 1)]
+thetas <- seq(0 + 0.0001, 2 * pi - 0.0001, length.out = n_points + 1)[-(n_points + 1)]
 # 
 # B_sim <- Basis_Construction(empirical_thetas, L = L_intervals, degree = degree)
 # tau = 0.2# smoothness
@@ -71,13 +71,14 @@ beta_values <- c(0.73331465, 0.27866933, -0.04889285, -0.28155420, -0.53854766, 
 n_points <- 25
 # Create evenly spaced angles from 0 to almost 2*pi
 degree = 3
-sam <- in_model_sample(n = 10, K_l = length(thetas), thetas = thetas, n_int_knots = 8, degree = 3, tau = 0.2, 
-                       beta_values = beta_values)
+sam <- in_model_sample(n = 100, K_l = length(thetas), thetas = thetas, n_int_knots = 10, degree = 3, tau = 0.25, 
+                       beta_values = NA)
 
 rot <- sam$mu
 mu_i <- sam$mu_i[,,3]
 X_i <- sam$X[,,3]
 sam$Sigma_e
+sam$betas
 # rot <- mu_mean%*%R
 par(mfrow = c(1, 3))
 plot(rot, asp = 1, pch = 21, bg = "darkgreen", main = "Latent mu")
@@ -88,3 +89,4 @@ lines(c(mu_i[,1], mu_i[1,1]), c(mu_i[,2], mu_i[1,2]), col = "red", lwd = 2)
 
 plot(X_i, asp = 1, pch = 21, bg = "darkblue", main = "Observed Conf for unit i")
 lines(c(X_i[,1], X_i[1,1]), c(X_i[,2], X_i[1,2]), col = "blue", lwd = 2)
+
