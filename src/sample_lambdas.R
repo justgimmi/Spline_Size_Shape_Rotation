@@ -94,5 +94,5 @@ sample_lambda <- function(init, hyper, X, k_l){
     }
   }
   
-  return(list(init = init, hyper = hyper))
+  # return(list(init = init, hyper = hyper))
 }

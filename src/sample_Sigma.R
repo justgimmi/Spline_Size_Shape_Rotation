@@ -41,9 +41,9 @@ sample_Sigma <- function(init, hyper, k_l){
     init$Q_R[,,i] <- (1/(init$alphas[i]^2)) *t(init$R[,,i])%*%init$Sigma_inv%*%init$R[,,i] 
   }
   
-  out <- list()
-  out$init <- init
-  out$hyper <- hyper
-  return(out)
+  # out <- list()
+  # out$init <- init
+  # out$hyper <- hyper
+  # return(out)
   
 }

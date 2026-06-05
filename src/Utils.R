@@ -194,15 +194,15 @@ init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, n){
   param$mean_i <- array(0, dim = c(length(thetas), 2, n))  # deterministic 
   param$R <- array(NA, dim = c(2, 2, n)) #deterministic
   
-  param$Sigma_inv <- solve(param$Sigma)
-  param$Q_R <- array(NA, dim = c(2, 2, n))
-  param$residual <-  array(NA, dim = c(2, 2, n))
+  param$Sigma_inv <- solve(param$Sigma) # deterministic
+  param$Q_R <- array(NA, dim = c(2, 2, n)) # deterministic 
+  param$residual <-  array(NA, dim = c(2, 2, n)) #deterministic 
   
   return(param)
 }
 
 hyperparameters <- function(a_tau, b_tau, n_basis, degree,
-                            width_theta = pi/4, m = 8, nu, psi, tol = 1e-7){
+                            width_theta = pi/4, m = 8, nu, psi, n, a, b,tol = 1e-7){
   
   hyper <- list()
   # tau block -----
@@ -235,6 +235,32 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   hyper$psi <- psi
   hyper$nu_post <- 0
   hyper$psi_post <- psi
+  
+  # Alphas block -----
+  # hyper$lambda_a <- (2.38^2)/n
+  # hyper$mu_a <- matrix(0, nrow = n)
+  # hyper$Sigma_a <- diag(0.01, nrow = n, ncol = n)
+  # hyper$L_a <- chol(hyper$lambda_a*hyper$Sigma_a)
+  # hyper$gamma_a <- 1
+  # hyper$a_opt <- 0.234
+  # hyper$a_aver_a <- 0
+  # hyper$t <- 0
+  # hyper$a <- a
+  # hyper$b <- b
+  # hyper$log_lik_a <- 0
+  
+  hyper$lambda_a <- matrix((2.38^2), nrow = n)
+  hyper$mu_a <- matrix(0, nrow = n)
+  hyper$Sigma_a <- matrix(1, nrow = n)
+  #hyper$L_a <- chol(hyper$lambda_a*hyper$Sigma_a)
+  hyper$gamma_a <- 1
+  hyper$a_opt <- 0.44
+  hyper$a_aver_a <- numeric(n)
+  hyper$t <- 0
+  hyper$a <- a
+  hyper$b <- b
+  hyper$log_lik_a <- numeric(n)
+  
   return(hyper)
 }
 
@@ -244,6 +270,7 @@ create_output <- function(mcmc_iter, k_l, n){
   output$theta <- matrix(NA, nrow = mcmc_iter, ncol = k_l)
   output$lambdas <- matrix(NA, nrow = mcmc_iter, ncol = n)
   output$Sigma <- array(NA, dim = c(mcmc_iter, 2, 2))
+  output$alphas <- matrix(NA, nrow = mcmc_iter, ncol = n)
   return(output)
 }
 
@@ -267,7 +294,7 @@ mean_constructor <- function(n_basis, degree, init_param, X){
     init_param$Q_R[,,i] <- (1/(init_param$alphas[i]^2)) *t(init_param$R[,,i])%*%init_param$Sigma_inv%*%init_param$R[,,i] 
     init_param$residual[,,i] <- t(X[,,i] - init_param$mean_i[,,i])%*%(X[,,i] - init_param$mean_i[,,i])
   }
-  return(init_param)
+  # return(init_param)
 }
 
 

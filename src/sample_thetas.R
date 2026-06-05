@@ -1,7 +1,7 @@
 # Sample the angle parameters -----
 
 
-eval_log_lik_l <- function(theta_candidate, hyper, init, l, Q_R_11, Q_R_22, Q_R_12) {
+eval_log_lik_l <- function(theta_candidate, hyper, init, l, Q_R_11, Q_R_22, Q_R_12, X) {
   # this function is just a wrap up to compute the contribution of the new element inside the log-lik
   theta_mod <- theta_candidate %% (2*pi)
   B_raw <- Basis_Construction(theta_mod, hyper$n_basis, hyper$degree)
@@ -56,11 +56,11 @@ sample_theta <- function(init, hyper, X){
     up <- (m-1) - J
     
     # STEPPING OUT
-    while ((right - left) < 2*pi && eval_log_lik_l(left, hyper, init, l, Q_R_11, Q_R_22, Q_R_12)$log_lik >= log_thresh && J > 0) {
+    while ((right - left) < 2*pi && eval_log_lik_l(left, hyper, init, l, Q_R_11, Q_R_22, Q_R_12, X)$log_lik >= log_thresh && J > 0) {
       left <- left - w
        J <- J - 1
     }
-    while ((right - left) < 2*pi && eval_log_lik_l(right, hyper, init,l, Q_R_11, Q_R_22, Q_R_12)$log_lik >= log_thresh && up > 0) {
+    while ((right - left) < 2*pi && eval_log_lik_l(right, hyper, init,l, Q_R_11, Q_R_22, Q_R_12, X)$log_lik >= log_thresh && up > 0) {
 
       right <- right + w
       up <- up - 1
@@ -72,7 +72,7 @@ sample_theta <- function(init, hyper, X){
     
     while (bool == TRUE) {
       theta_raw <- left + runif(n = 1, min = 0, max = 1)*(right - left)
-      res_cand <-  eval_log_lik_l(theta_raw, hyper, init, l, Q_R_11, Q_R_22, Q_R_12) 
+      res_cand <-  eval_log_lik_l(theta_raw, hyper, init, l, Q_R_11, Q_R_22, Q_R_12, X) 
       log_theta_prop <- res_cand$log_lik
       
       if (log_theta_prop >= log_thresh) {
@@ -101,5 +101,5 @@ sample_theta <- function(init, hyper, X){
     }
   }
   
-  return(list(init = init, hyper = hyper))
+  # return(list(init = init, hyper = hyper))
 }
