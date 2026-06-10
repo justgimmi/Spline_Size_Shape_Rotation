@@ -182,6 +182,7 @@ init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, n){
   # n --> number of units 
   param <- list()
   param$n <- n
+  param$k_l <- length(thetas)
   param$tau <- tau
   param$lambdas <- lambdas
   param$thetas <- thetas
@@ -202,7 +203,7 @@ init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, n){
 }
 
 hyperparameters <- function(a_tau, b_tau, n_basis, degree,
-                            width_theta = pi/4, m = 8, nu, psi, n, a, b,tol = 1e-7){
+                            width_theta = pi/4, m = 8, nu, psi, n, a, b,tol = 1e-10){
   
   hyper <- list()
   # tau block -----
@@ -219,13 +220,31 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   K2 <- K2_construction(J) #construct K2
   hyper$K <- (K1 + K2)
   hyper$L <- qr(hyper$K)$rank
-  eig_vals <- eigen(hyper$K, symmetric = TRUE)$values
-  hyper$L <- sum(eig_vals > tol) # approximation for the normal distribution
+  eig <- eigen(hyper$K, symmetric = TRUE)
+  ord <- order(eig$values, decreasing = TRUE)
+  eig_vals <- eig$values[ord]
+  eig_vecs <- eig$vectors[, ord, drop = FALSE]
   
+  
+  keep <- eig_vals > tol
+  hyper$L <- sum(keep) # approximation for the normal distribution
+  hyper$Eigen_matrix <- diag(1/sqrt(eig_vals[keep]), nrow = hyper$L) # using for sample from the prior
+  hyper$Eigen_vector <- eig_vecs[, keep, drop = FALSE]
+  hyper$Eigen_vector_null <- t(eig_vecs[, !keep, drop = FALSE])
+  #hyper$U_lambda <- hyper$Eigen_vector %*% hyper$Eigen_matrix
+  
+  hyper$C_bar <- hyper$Eigen_vector %*% hyper$Eigen_matrix # \beta = C_bar \gamma
+  hyper$A_bar <- diag(sqrt(eig_vals[keep]), nrow = hyper$L) %*% t(hyper$Eigen_vector) # \gamma = A_bar \beta
+  # 
+  # Q_gamma <-t(hyper$C_bar)%*%hyper$Eigen_vector %*% (diag(1/(hyper$Eigen_matrix^2)) * diag(1, hyper$L)) %*% t(hyper$Eigen_vector) %*% hyper$C_bar
+  # 
+  # Sigma_gamma <- solve(Q_gamma)
+  # 
+  # #U_lambda <- t(chol(Sigma_gamma))
+  # hyper$U_lambda <- t(chol(Sigma_gamma))
   # Theta block -----
   hyper$width_theta <- width_theta
   hyper$m <- m # it is used to have a slice of size w*m
-  
   # Lambda block ----
   hyper$width_lambda <- width_theta
   hyper$log_lik <- 0
@@ -251,7 +270,7 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   
   hyper$lambda_a <- matrix((2.38^2), nrow = n)
   hyper$mu_a <- matrix(0, nrow = n)
-  hyper$Sigma_a <- matrix(1, nrow = n)
+  hyper$Sigma_a <- matrix(0.01, nrow = n)
   #hyper$L_a <- chol(hyper$lambda_a*hyper$Sigma_a)
   hyper$gamma_a <- 1
   hyper$a_opt <- 0.44
@@ -264,13 +283,14 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   return(hyper)
 }
 
-create_output <- function(mcmc_iter, k_l, n){
+create_output <- function(mcmc_iter, k_l, n, L){
   output <- list()
   output$tau <- numeric(mcmc_iter)
   output$theta <- matrix(NA, nrow = mcmc_iter, ncol = k_l)
   output$lambdas <- matrix(NA, nrow = mcmc_iter, ncol = n)
   output$Sigma <- array(NA, dim = c(mcmc_iter, 2, 2))
   output$alphas <- matrix(NA, nrow = mcmc_iter, ncol = n)
+  output$betas <- matrix(NA, nrow = mcmc_iter, ncol = L)
   return(output)
 }
 
@@ -303,7 +323,9 @@ log_density <- function(init){
                init$Q_R[1,2,] * init$residual[2,1,] +
                init$Q_R[2,1,] * init$residual[1,2,] +
                init$Q_R[2,2,] * init$residual[2,2,])
-  return(-0.5 * val)
+  
+  val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma))
+  return(-0.5 * val + val_2)
 }
 
 

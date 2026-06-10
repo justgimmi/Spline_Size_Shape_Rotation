@@ -135,6 +135,7 @@ sample_alpha <- function(init, hyper, X, k_l, burn = TRUE){
       hyper$lambda_a[i] <- hyper$lambda_a[i]*exp(hyper$gamma_a *(min(exp(alpha), 1) - hyper$a_opt))
       hyper$Sigma_a[i] <- hyper$Sigma_a[i] + hyper$gamma_a *((log(init$alphas[i]) - hyper$mu_a[i])^2 - hyper$Sigma_a[i])
       hyper$mu_a[i] <- hyper$mu_a[i] + hyper$gamma_a *(log(init$alphas[i])- hyper$mu_a[i])
+      
     }
     
   }

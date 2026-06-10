@@ -40,6 +40,7 @@ sample_Sigma <- function(init, hyper, k_l){
   for (i in 1:n) {
     init$Q_R[,,i] <- (1/(init$alphas[i]^2)) *t(init$R[,,i])%*%init$Sigma_inv%*%init$R[,,i] 
   }
+  hyper$log_lik <- log_density(init)
   
   # out <- list()
   # out$init <- init
