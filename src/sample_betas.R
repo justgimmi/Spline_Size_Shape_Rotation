@@ -38,7 +38,10 @@ sample_beta <- function(init, hyper, X, k_l){
   gamma_cand <- init$gammas * cos(theta) + gamma_samp*sin(theta)
   #beta_prop <- beta_cand - (hyper$P_Null %*% beta_cand) + (hyper$P_Null %*% init$betas)
   res_cand <-eval_log_lik_beta(gamma_cand, init, hyper, X, k_l) 
-  while(res_cand$log_lik <  thresh){
+  while(res_cand$log_lik <=   thresh){
+    #print(theta)
+    #print(res_cand$log_lik)
+    #print(thresh)
     if (theta >=  0) {
       theta_max <- theta
     }

@@ -72,7 +72,7 @@ beta_values <- c(0.73331465, 0.27866933, -0.04889285, -0.28155420, -0.53854766, 
 n_points <- 25
 # Create evenly spaced angles from 0 to almost 2*pi
 degree = 3
-sam <- in_model_sample(n = 100, K_l = length(thetas), thetas = thetas, n_int_knots = 10, degree = 3, tau = 0.25, 
+sam <- in_model_sample(n = 100, K_l = length(thetas), thetas = thetas, n_int_knots = 10, degree = 3, tau = 0.3, 
                        beta_values = NA)
 
 rot <- sam$mu
@@ -91,3 +91,17 @@ lines(c(mu_i[,1], mu_i[1,1]), c(mu_i[,2], mu_i[1,2]), col = "red", lwd = 2)
 plot(X_i, asp = 1, pch = 21, bg = "darkblue", main = "Observed Conf for unit i")
 lines(c(X_i[,1], X_i[1,1]), c(X_i[,2], X_i[1,2]), col = "blue", lwd = 2)
 
+sum(sam$betas)
+sam$betas
+
+
+data <- read.csv("src/saraghi_final_dataset.csv")
+data|>
+  filter(species == "D.sargus") -> Sargus_data
+final_array <- array(NA, dim = c(19, 2, nrow(Sargus_data)))
+for (i in 1:nrow(Sargus_data)) {
+  row_data <- unlist(Sargus_data[i, 8:45])
+
+  final_array[,,i] <- matrix(row_data, nrow = 19, ncol = 2, byrow = TRUE)
+}
+sam <- final_array

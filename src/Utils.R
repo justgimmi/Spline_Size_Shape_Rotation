@@ -137,8 +137,8 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   }
   
   # Variance block ---- 
-  S <- matrix(c(3.5*1e-4, 0,
-                0, 2.2*1e-4), 2, 2)
+  S <- matrix(c(3.5*1e-5, 0,
+                0, 2.2*1e-5), 2, 2)
   
   Sigma_e <- riwish(4, S)# sample measurement error on the p x p
   #Sigma_e <- diag(2)*0.00035
@@ -203,7 +203,8 @@ init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, n){
 }
 
 hyperparameters <- function(a_tau, b_tau, n_basis, degree,
-                            width_theta = pi/4, m = 8, nu, psi, n, a, b,tol = 1e-10){
+                            width_theta = pi/4, m = 8, nu, psi, n, a, b, Sigma_eta = diag(1000, nrow = 2, ncol = 2),
+                            tol = 1e-10){
   
   hyper <- list()
   # tau block -----
@@ -235,13 +236,8 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   
   hyper$C_bar <- hyper$Eigen_vector %*% hyper$Eigen_matrix # \beta = C_bar \gamma
   hyper$A_bar <- diag(sqrt(eig_vals[keep]), nrow = hyper$L) %*% t(hyper$Eigen_vector) # \gamma = A_bar \beta
-  # 
-  # Q_gamma <-t(hyper$C_bar)%*%hyper$Eigen_vector %*% (diag(1/(hyper$Eigen_matrix^2)) * diag(1, hyper$L)) %*% t(hyper$Eigen_vector) %*% hyper$C_bar
-  # 
-  # Sigma_gamma <- solve(Q_gamma)
-  # 
-  # #U_lambda <- t(chol(Sigma_gamma))
-  # hyper$U_lambda <- t(chol(Sigma_gamma))
+  
+  
   # Theta block -----
   hyper$width_theta <- width_theta
   hyper$m <- m # it is used to have a slice of size w*m
@@ -280,6 +276,13 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   hyper$b <- b
   hyper$log_lik_a <- numeric(n)
   
+  
+  # Eta block ----
+  hyper$Sigma_eta_inv <- solve(Sigma_eta)
+  hyper$mu_eta <- matrix(0, nrow = n, ncol = 2)
+  hyper$Sigma_eta_new <- hyper$Sigma_eta
+  hyper$mu_new <- matrix(0, nrow = n, ncol = 2)
+  
   return(hyper)
 }
 
@@ -291,6 +294,7 @@ create_output <- function(mcmc_iter, k_l, n, L){
   output$Sigma <- array(NA, dim = c(mcmc_iter, 2, 2))
   output$alphas <- matrix(NA, nrow = mcmc_iter, ncol = n)
   output$betas <- matrix(NA, nrow = mcmc_iter, ncol = L)
+  output$eta <- array(NA, c(mcmc_iter, n, 2))
   return(output)
 }
 
