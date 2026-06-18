@@ -100,12 +100,12 @@ RB_MCMC <- function(total_iter, burnin, thinning,
         print(init_env$tau)
         print(init_env$Sigma)
         print(init_env$eta)
-        X_mean <- init_env$mean
-        plot(X_mean, asp = 1, pch = 21, bg = "darkblue", main = "Estimated Mean")
-        lines(c(X_mean[,1], X_mean[1,1]), c(X_mean[,2], X_mean[1,2]), col = "blue", lwd = 2)
-        X_new_i <- init_env$mean_i[,,1]
-        plot(X_new_i, asp = 1, pch = 21, bg = "black", main = "estimated Conf for unit i")
-        lines(c(X_new_i[,1], X_new_i[1,1]), c(X_new_i[,2], X_new_i[1,2]), col = "brown", lwd = 2)
+        # X_mean <- init_env$mean
+        # plot(X_mean, asp = 1, pch = 21, bg = "darkblue", main = "Estimated Mean")
+        # lines(c(X_mean[,1], X_mean[1,1]), c(X_mean[,2], X_mean[1,2]), col = "blue", lwd = 2)
+        # X_new_i <- init_env$mean_i[,,1]
+        # plot(X_new_i, asp = 1, pch = 21, bg = "black", main = "estimated Conf for unit i")
+        # lines(c(X_new_i[,1], X_new_i[1,1]), c(X_new_i[,2], X_new_i[1,2]), col = "brown", lwd = 2)
       }
     
       
@@ -121,6 +121,9 @@ RB_MCMC <- function(total_iter, burnin, thinning,
     output$Sigma[i,,] <- init_env$Sigma
     output$alphas[i, ] <- init_env$alphas
     output$betas[i, ] <- init_env$betas
+    output$eta[i,,] <- init_env$eta
+    output$mean_i[[i]] <- init_env$mean_i
+    output$mean[i, ,] <- init_env$mean
     if (i %% 100 == 0) {
       # cli_inform(paste0("\n[Burn-in - Iterazione globale: ", hyper$t, "]"))
       #print(hyper_env$a_aver_a/hyper_env$t)
@@ -233,7 +236,7 @@ sam$betas
 sam$tau^2
 sam$Sigma_e
 tic()
-MCMC_samp <- RB_MCMC(total_iter = 100000, burnin = 10000, thinning  = 20, X <- sam$X, 
+MCMC_samp <- RB_MCMC(total_iter = 100000, burnin = 20000, thinning  = 20, X = X, 
                      init = init, hyper = hyper)
 toc()
 gcinfo(FALSE)
@@ -248,14 +251,16 @@ sam$betas
 sam$theta
 20*0.31
 2*pi
-gg_mcmc_diagnostics(MCMC_samp$output$tau, param_name = "tau", real_values = sam$tau^2)
-gg_mcmc_diagnostics(MCMC_samp$output$theta, param_name = "theta", real_values = sam$theta, TRUE)
-gg_mcmc_diagnostics(MCMC_samp$output$lambda, param_name = "lambda", real_values = sam$lambda, TRUE)
+save(MCMC_samp, file = "risultati_new.RData")
+load("risultati_new.RData")
+gg_mcmc_diagnostics(MCMC_samp$output$tau, param_name = "tau", real_values = NA)
+gg_mcmc_diagnostics(MCMC_samp$output$theta, param_name = "theta", real_values = NA, TRUE)
+gg_mcmc_diagnostics(MCMC_samp$output$lambda, param_name = "lambda", real_values = NA, TRUE)
 Sigma_samp <- cbind(MCMC_samp$output$Sigma[,1,1], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,2,2])
-gg_mcmc_diagnostics(Sigma_samp, param_name = "Sigma", real_values = c(sam$Sigma_e), TRUE)
-gg_mcmc_diagnostics(MCMC_samp$output$alphas, param_name = "alpha", real_values = sam$alphas, TRUE)
-gg_mcmc_diagnostics(MCMC_samp$output$betas, param_name = "betas", real_values = sam$betas, TRUE)
-
+gg_mcmc_diagnostics(Sigma_samp, param_name = "Sigma", real_values = c(NA), TRUE)
+gg_mcmc_diagnostics(MCMC_samp$output$alphas, param_name = "alpha", real_values = NA, TRUE)
+gg_mcmc_diagnostics(MCMC_samp$output$betas, param_name = "betas", real_values = NA, TRUE)
+gg_mcmc_diagnostics(MCMC_samp$output$eta[,,1], param_name = "etas", real_values = NA, TRUE)
 par(mfrow = c(1,1))
 acf(MCMC_samp$output$theta[seq(1, 4000, 50),1])
 
@@ -265,28 +270,29 @@ Sigma_samp <- cbind(MCMC_samp$output$Sigma[,1,1], MCMC_samp$output$Sigma[,1,2], 
 dim(MCMC_samp$output$Sigma)
 
 par(mfrow = c(1, 4))
-for (i in 1:n) {
-  
-  rot <- sam$mu
-  mu_i <- sam$mu_i[,,i]
-  X_i <- sam$X[,,i]
-  X_new_i <- init_env$mean_i[,,i]
-  X_mean <- init_env$mean
-
-  plot(rot, asp = 1, pch = 21, bg = "darkgreen", main = "Latent mu")
-  lines(c(rot[,1], rot[1,1]), c(rot[,2], rot[1,2]), col = "forestgreen", lwd = 2)
-  
-  plot(X_mean, asp = 1, pch = 21, bg = "darkblue", main = "Estimated Mean")
-  lines(c(X_mean[,1], X_mean[1,1]), c(X_mean[,2], X_mean[1,2]), col = "blue", lwd = 2)
-  
-  plot(mu_i, asp = 1, pch = 21, bg = "darkred", main = "mu for the i-th unit")
-  lines(c(mu_i[,1], mu_i[1,1]), c(mu_i[,2], mu_i[1,2]), col = "red", lwd = 2)
-  
-  plot(X_new_i, asp = 1, pch = 21, bg = "black", main = "estimated Conf for unit i")
-  lines(c(X_new_i[,1], X_new_i[1,1]), c(X_new_i[,2], X_new_i[1,2]), col = "brown", lwd = 2)
-  
-  
-}
+MCMC_samp$init$mean_i[]
+# for (i in 1:n) {
+#   
+#   rot <- sam$mu
+#   mu_i <- sam$mu_i[,,i]
+#   X_i <- sam$X[,,i]
+#   X_new_i <- init_env$mean_i[,,i]
+#   X_mean <- init_env$mean
+# 
+#   plot(rot, asp = 1, pch = 21, bg = "darkgreen", main = "Latent mu")
+#   lines(c(rot[,1], rot[1,1]), c(rot[,2], rot[1,2]), col = "forestgreen", lwd = 2)
+#   
+#   plot(X_mean, asp = 1, pch = 21, bg = "darkblue", main = "Estimated Mean")
+#   lines(c(X_mean[,1], X_mean[1,1]), c(X_mean[,2], X_mean[1,2]), col = "blue", lwd = 2)
+#   
+#   plot(mu_i, asp = 1, pch = 21, bg = "darkred", main = "mu for the i-th unit")
+#   lines(c(mu_i[,1], mu_i[1,1]), c(mu_i[,2], mu_i[1,2]), col = "red", lwd = 2)
+#   
+#   plot(X_new_i, asp = 1, pch = 21, bg = "black", main = "estimated Conf for unit i")
+#   lines(c(X_new_i[,1], X_new_i[1,1]), c(X_new_i[,2], X_new_i[1,2]), col = "brown", lwd = 2)
+#   
+#   
+# }
 
 apply(MCMC_samp$output$betas[,], MARGIN = 2, FUN = mean)
 sam$betas
@@ -301,43 +307,122 @@ for (i in 1:init_env$k_l) {
   
 }
 
-pdf("prova.pdf")
-
-gg_mcmc_diagnostics(MCMC_samp$output$tau, param_name = "tau", real_values = sam$tau^2)
-gg_mcmc_diagnostics(MCMC_samp$output$theta, param_name = "theta", real_values = sam$theta, TRUE)
-gg_mcmc_diagnostics(MCMC_samp$output$lambda, param_name = "lambda", real_values = sam$lambda, TRUE)
-Sigma_samp <- cbind(MCMC_samp$output$Sigma[,1,1], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,2,2])
-gg_mcmc_diagnostics(Sigma_samp, param_name = "Sigma", real_values = c(sam$Sigma_e), TRUE)
-gg_mcmc_diagnostics(MCMC_samp$output$alphas, param_name = "alpha", real_values = sam$alphas, TRUE)
-gg_mcmc_diagnostics(MCMC_samp$output$betas, param_name = "betas", real_values = sam$betas, TRUE)
-
-save(MCMC_samp,sam , file = "prova.RData")
+pdf("Risultati_Not_Ident.pdf")
 par(mfrow = c(1, 3))
+n = 120
+n <- 120
+n_iter <- dim(MCMC_samp$output$mean)[1]
+#i = 1
+k_l <- dim(MCMC_samp$output$mean)[2]
 for (i in 1:n) {
   
-  #rot <- sam$mu
-  #mu_i <- sam$mu_i[,,i]
   X_i <- X[,,i]
-  X_new_i <- init_env$mean_i[,,i]
-  X_mean <- init_env$mean
   
-  # plot(rot, asp = 1, pch = 21, bg = "darkgreen", main = "Latent mu")
-  # lines(c(rot[,1], rot[1,1]), c(rot[,2], rot[1,2]), col = "forestgreen", lwd = 2)
-
-  plot(X_mean, asp = 1, pch = 21, bg = "darkblue", main = "Estimated Mean")
-  lines(c(X_mean[,1], X_mean[1,1]), c(X_mean[,2], X_mean[1,2]), col = "blue", lwd = 2)
+  X_mean <- MCMC_samp$init$mean
   
-  plot(X_i, asp = 1, pch = 21, bg = "darkred", main = "mu for the i-th unit")
-  lines(c(X_i[,1], X_i[1,1]), c(X_i[,2], X_i[1,2]), col = "red", lwd = 2)
+  # ==========================================================
+  # CI per la mean shape (se hai posterior samples)
+  # ==========================================================
   
-  # plot(mu_i, asp = 1, pch = 21, bg = "darkred", main = "mu for the i-th unit")
-  # lines(c(mu_i[,1], mu_i[1,1]), c(mu_i[,2], mu_i[1,2]), col = "red", lwd = 2)
+  mean_samp <- MCMC_samp$output$mean  # [iter, k, 2]
   
-  plot(X_new_i, asp = 1, pch = 21, bg = "black", main = "estimated Conf for unit i")
-  lines(c(X_new_i[,1], X_new_i[1,1]), c(X_new_i[,2], X_new_i[1,2]), col = "brown", lwd = 2)
+  mean_low <- apply(mean_samp, c(2,3), quantile, probs = 0.025)
+  mean_high <- apply(mean_samp, c(2,3), quantile, probs = 0.975)
+  mean_samp_mean <- apply(mean_samp, c(2,3), mean)
+  
+  plot(mean_samp_mean, asp = 1, pch = 21, bg = "darkblue",
+       main = "Estimated Mean + CI")
+  
+  lines(c(mean_samp_mean[,1], mean_samp_mean[1,1]),
+        c(mean_samp_mean[,2], mean_samp_mean[1,2]),
+        col = "blue", lwd = 2)
+  
+  for (k in 1:nrow(X_mean)) {
+    
+    polygon(
+      x = c(mean_low[k,1], mean_high[k,1],
+            mean_high[k,1], mean_low[k,1]),
+      y = c(mean_low[k,2], mean_low[k,2],
+            mean_high[k,2], mean_high[k,2]),
+      border = NA,
+      col = rgb(0, 0, 1, 0.15)
+    )
+  }
+  
+  plot(X_i, asp = 1, pch = 21, bg = "darkred",
+       main = "i-th unit")
+  
+  lines(c(X_i[,1], X_i[1,1]),
+        c(X_i[,2], X_i[1,2]),
+        col = "red", lwd = 2)
+  
+  samp_i <- array(NA, dim = c(n_iter, k_l, 2))
+  for (j in 1:n_iter) {
+    samp_i[j,,] <- MCMC_samp$output$mean_i[[j]][,,i]
+    
+  }
   
   
+  #samp_i <- MCMC_samp$output$mean_i[[i]]
+  mean_samp_i <- apply(samp_i, c(2,3), mean)
+  low_i <- apply(samp_i, c(2,3), quantile, 0.025)
+  high_i <- apply(samp_i, c(2,3), quantile, 0.975)
+  plot(mean_samp_i, asp = 1, pch = 21, bg = "black",
+       main = "Estimated config + CI")
+  
+  lines(c(mean_samp_i[,1], mean_samp_i[1,1]),
+        c(mean_samp_i[,2], mean_samp_i[1,2]),
+        col = "brown", lwd = 2)
+  for (k in 1:k_l) {
+    
+    polygon(
+      x = c(low_i[k,1], high_i[k,1],
+            high_i[k,1], low_i[k,1]),
+      y = c(low_i[k,2], low_i[k,2],
+            high_i[k,2], high_i[k,2]),
+      col = rgb(0,0,1,0.40),
+      border = NA
+    )
+    
+  }
 }
+
+
+gg_mcmc_diagnostics(MCMC_samp$output$tau, param_name = "tau", real_values = NA)
+gg_mcmc_diagnostics(MCMC_samp$output$theta, param_name = "theta", real_values = NA, TRUE)
+gg_mcmc_diagnostics(MCMC_samp$output$lambda, param_name = "lambda", real_values = NA, TRUE)
+Sigma_samp <- cbind(MCMC_samp$output$Sigma[,1,1], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,2,2])
+gg_mcmc_diagnostics(Sigma_samp, param_name = "Sigma", real_values = c(NA), TRUE)
+gg_mcmc_diagnostics(MCMC_samp$output$alphas, param_name = "alpha", real_values = NA, TRUE)
+gg_mcmc_diagnostics(MCMC_samp$output$betas, param_name = "betas", real_values = NA, TRUE)
+
+#save(MCMC_samp,sam , file = "prova.RData")
+
+# for (i in 1:n) {
+#   
+#   #rot <- sam$mu
+#   #mu_i <- sam$mu_i[,,i]
+#   X_i <- X[,,i]
+#   X_new_i <- MCMC_samp$init$mean_i[,,i]
+#   X_mean <- MCMC_samp$init$mean
+#   
+#   # plot(rot, asp = 1, pch = 21, bg = "darkgreen", main = "Latent mu")
+#   # lines(c(rot[,1], rot[1,1]), c(rot[,2], rot[1,2]), col = "forestgreen", lwd = 2)
+# 
+#   plot(X_mean, asp = 1, pch = 21, bg = "darkblue", main = "Estimated Mean")
+#   lines(c(X_mean[,1], X_mean[1,1]), c(X_mean[,2], X_mean[1,2]), col = "blue", lwd = 2)
+#   
+#   plot(X_i, asp = 1, pch = 21, bg = "darkred", main = "i-th unit")
+#   lines(c(X_i[,1], X_i[1,1]), c(X_i[,2], X_i[1,2]), col = "red", lwd = 2)
+#   
+#   # plot(mu_i, asp = 1, pch = 21, bg = "darkred", main = "mu for the i-th unit")
+#   # lines(c(mu_i[,1], mu_i[1,1]), c(mu_i[,2], mu_i[1,2]), col = "red", lwd = 2)
+#   
+#   plot(X_new_i, asp = 1, pch = 21, bg = "black", main = "estimated Conf for unit i")
+#   lines(c(X_new_i[,1], X_new_i[1,1]), c(X_new_i[,2], X_new_i[1,2]), col = "brown", lwd = 2)
+#   
+#   
+# }
 
 dev.off()
 
@@ -356,20 +441,149 @@ for (i in 1:init_env$k_l) {
 
 
 
+MCMC_samp$output$mean[1, ,]
 
-init_env$lambdas
-sam$lambda
-X_new_i <- MCMC_samp$init$mean_i[,,3]
-mu_i <- init_env$mean
-par(mfrow = c(1, 4))
-plot(rot, asp = 1, pch = 21, bg = "darkgreen", main = "Latent mu")
-lines(c(rot[,1], rot[1,1]), c(rot[,2], rot[1,2]), col = "forestgreen", lwd = 2)
 
-plot(mu_i, asp = 1, pch = 21, bg = "darkred", main = "mu for the i-th unit")
-lines(c(mu_i[,1], mu_i[1,1]), c(mu_i[,2], mu_i[1,2]), col = "red", lwd = 2)
+# Identifiability ------ 
+# Funzione per allineare una forma X alla target
+# ==============================================================================
+# FUNZIONE DI ALLINEAMENTO DI PROCRUSTE (SOLO POST-PROCESSING)
+# ==============================================================================
+output <- MCMC_samp$output
+# ============================================================
+# 1. scegli pair (massima distanza sulla forma iniziale media)
+# ============================================================
 
-plot(X_i, asp = 1, pch = 21, bg = "darkblue", main = "Observed Conf for unit i")
-lines(c(X_i[,1], X_i[1,1]), c(X_i[,2], X_i[1,2]), col = "blue", lwd = 2)
+X0 <- X[, , 1]
 
-plot(X_new_i, asp = 1, pch = 21, bg = "black", main = "estimated Conf for unit i")
-lines(c(X_new_i[,1], X_new_i[1,1]), c(X_new_i[,2], X_new_i[1,2]), col = "brown", lwd = 2)
+pair <- c(1, 2)
+distt <- 0
+
+for (i in 1:nrow(X0)) {
+  for (j in 1:nrow(X0)) {
+    
+    dis <- sum((X0[i,] - X0[j,])^2)
+    
+    if (dis > distt) {
+      pair <- c(i, j)
+      distt <- dis
+    }
+  }
+}
+align_prof_method <- function(output, pair, third_landmark = NULL) {
+  
+  n_iter <- dim(output$mean)[1]
+  k <- dim(output$mean)[2]
+  
+  mean_aligned <- array(0, dim = c(n_iter, k, 2))
+  eta_aligned <- array(0, dim = dim(output$eta))
+  
+  alphas_aligned  <- matrix(0, n_iter, ncol(output$alphas))
+  betas_aligned   <- matrix(0, n_iter, ncol(output$betas))
+  lambdas_aligned <- matrix(0, n_iter, ncol(output$lambdas))
+  theta_aligned   <- matrix(0, n_iter, ncol(output$theta))
+  
+  Sigma_aligned <- array(0, dim(output$Sigma))
+  
+  for (i in 1:n_iter) {
+    
+    M_raw <- output$mean[i,,]
+    
+    # ======================================================
+    # 1. TRASLAZIONE
+    # ======================================================
+    
+    shift <- M_raw[pair[1],]
+    M <- sweep(M_raw, 2, shift, "-")
+    
+    eta_aligned[i,,1] <- output$eta[i,,1] + shift[1]
+    eta_aligned[i,,2] <- output$eta[i,,2] + shift[2]
+    
+    # ======================================================
+    # 2. ROTAZIONE
+    # ======================================================
+    
+    v <- M[pair[2],]
+    
+    phi <- atan2(v[2], v[1])
+    
+    R <- matrix(c(cos(phi), -sin(phi),
+                  sin(phi),  cos(phi)),
+                2,2,byrow=TRUE)
+    
+    M <- M %*% t(R)
+    
+    # update angular params (CHECK SIGN CONSISTENCY MODEL-WISE)
+    lambdas_aligned[i,] <- output$lambdas[i,] - phi
+    theta_aligned[i,]   <- (output$theta[i,] + phi) %% (2*pi)
+    
+    # ======================================================
+    # 3. SCALA (NORMA = 1)
+    # ======================================================
+    
+    scale <- sqrt(sum(M^2))
+    M <- M / scale
+    
+    alphas_aligned[i,] <- output$alphas[i,] * scale
+    betas_aligned[i,]  <- output$betas[i,] - log(scale)
+    
+    # ======================================================
+    # 4. RIFLESSIONE (CRUCIALE)
+    # ======================================================
+    
+    # default: scegli landmark più informativo se non dato
+    if (is.null(third_landmark)) {
+      third_landmark <- which.max(abs(M[,2]))
+      if (third_landmark %in% pair) third_landmark <- setdiff(1:k, pair)[1]
+    }
+    
+    flip <- FALSE
+    
+    if (M[third_landmark,2] < 0) {
+      M[,2] <- -M[,2]
+      flip <- TRUE
+    }
+    
+    mean_aligned[i,,] <- M
+    
+    # ======================================================
+    # 5. SIGMA
+    # ======================================================
+    
+    Sigma_i <- (R %*% output$Sigma[i,,] %*% t(R)) / (scale^2)
+    
+    if (flip) {
+      Fmat <- diag(c(1,-1))
+      Sigma_i <- Fmat %*% Sigma_i %*% Fmat
+    }
+    
+    Sigma_aligned[i,,] <- Sigma_i
+  }
+  
+  output$mean <- mean_aligned
+  output$eta <- eta_aligned
+  output$alphas <- alphas_aligned
+  output$betas <- betas_aligned
+  output$lambdas <- lambdas_aligned
+  output$theta <- theta_aligned
+  output$Sigma <- Sigma_aligned
+  
+  output
+}
+
+# ==============================================================================
+# UTILIZZO
+# ==============================================================================
+# Finito l'MCMC, ti basta lanciare:
+output_identificato <- align_prof_method(output, pair = pair)
+gg_mcmc_diagnostics(MCMC_samp$output$tau, param_name = "tau", real_values = NA)
+gg_mcmc_diagnostics(output_identificato$theta, param_name = "theta", real_values = NA, TRUE)
+gg_mcmc_diagnostics(output_identificato$lambda, param_name = "lambda", real_values = NA, TRUE)
+Sigma_samp <- cbind(output_identificato$Sigma[,1,1], output_identificato$Sigma[,1,2],output_identificato$Sigma[,1,2], output_identificato$Sigma[,2,2])
+gg_mcmc_diagnostics(Sigma_samp, param_name = "Sigma", real_values = c(NA), TRUE)
+gg_mcmc_diagnostics(output_identificato$alphas, param_name = "alpha", real_values = NA, TRUE)
+gg_mcmc_diagnostics(output_identificato$betas, param_name = "betas", real_values =NA, TRUE)
+
+plot(X[,,1])
+points(X[19,1,1],X[19,2,1],  col = "red", pch = 16)
+points(X[10,1,1],X[10,2,1],  col = "red", pch = 16)

@@ -1,6 +1,6 @@
 
 # Source file -----
-#setwd("C:/Users/gmsan/Documenti/GitHub/Spline_Size_Shape_Rotation")
+setwd("C:/Users/gmsan/Documenti/GitHub/Spline_Size_Shape_Rotation")
 source("src/Packages.R")
 source("src/Utils.R")
 

@@ -295,6 +295,8 @@ create_output <- function(mcmc_iter, k_l, n, L){
   output$alphas <- matrix(NA, nrow = mcmc_iter, ncol = n)
   output$betas <- matrix(NA, nrow = mcmc_iter, ncol = L)
   output$eta <- array(NA, c(mcmc_iter, n, 2))
+  output$mean_i <- list()
+  output$mean <- array(NA, c(mcmc_iter, k_l, 2))
   return(output)
 }
 
