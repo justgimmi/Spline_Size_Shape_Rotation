@@ -7,28 +7,67 @@ Basis_Construction <- function(thetas, L, degree = 3){
   # I do not like to use already implemented function because they are based
   # on the range of the vector to define the knots so every iteration of the MCMC
   # we could have different basis following this approach
-  
-  # thetas: --> vector of theta values where to evaluate the basis 
+
+  # thetas: --> vector of theta values where to evaluate the basis
   # L: --> how many internal knots do we want?
   # degree: --> spline degree
-  
-  # The idea of this function is the following. Given the fact that I want the starting value in 0 
+
+  # The idea of this function is the following. Given the fact that I want the starting value in 0
   # and the end point in 2 \pi, I first define equispaced knots on this interval. Then, we habe to
-  # add padding on the left and on the right. A conservative choice would be to add degree times 0 before 
-  # and degree times 2\pi after. Talking with Johannes, I understood that the best approach to have 
+  # add padding on the left and on the right. A conservative choice would be to add degree times 0 before
+  # and degree times 2\pi after. Talking with Johannes, I understood that the best approach to have
   # meaningfull penalties is to have equispaced knots also on the left and right part of the interval
-  delta <- (2 * pi) / L # equispaced shift 
-  
+  delta <- (2 * pi) / L # equispaced shift
+
   knots_base <- seq(0, 2 * pi, by = delta)[-c(1, L+1)] # base knots
-  
-  total_knots <- c(seq(0 - degree*delta, 0, by = delta), knots_base, seq(2*pi , 2*pi + degree*delta, 
+
+  total_knots <- c(seq(0 - degree*delta, 0, by = delta), knots_base, seq(2*pi , 2*pi + degree*delta,
                                                                          by = delta))
   Basis <- splineDesign(total_knots, thetas, ord = degree + 1, outer.ok = FALSE,
                         derivs = F) # Basis construction
   # At the End we obtain a matrix of size length(theta) x (L + degree)
   return(Basis)
 }
+# 
+# Basis_Construction <- function(thetas, L, degree = 3){
+#   # thetas: vettore dei landmark angles in (0, 2*pi)
+#   # L: numero di nodi equispaziati nell'intervallo circolare
+#   # degree: grado della spline (3 = cubica)
+#   
+#   # 1. Definiamo i nodi base equispaziati su [0, 2*pi]
+#   delta <- (2 * pi) / L
+#   knots_base <- seq(0, 2 * pi, length.out = L + 1) # include 0 e 2*pi esattamente una volta
+#   
+#   # 2. Per le spline periodiche, estendiamo i nodi all'esterno "avvolgendo" il cerchio
+#   # Nodi a sinistra: prendiamo gli ultimi nodi prima di 2*pi e li trasliamo a sinistra di 2*pi
+#   left_knots <- knots_base[(L + 1 - degree):L] - 2 * pi
+#   # Nodi a destra: prendiamo i primi nodi dopo lo 0 e li trasliamo a destra di 2*pi
+#   right_knots <- knots_base[2:(degree + 1)] + 2 * pi
+#   
+#   # Uniamo i nodi in una griglia perfettamente equispaziata e coerente
+#   total_knots <- c(left_knots, knots_base, right_knots)
+#   
+#   # 3. Generiamo la base standard sulla griglia estesa
+#   # splineDesign richiede l'ordine (degree + 1)
+#   ord <- degree + 1
+#   Basis_raw <- splineDesign(knots = total_knots, x = thetas, ord = ord, outer.ok = TRUE)
+#   
+#   # 4. TRICK DELLA PERIODICITÀ: Uniamo le colonne corrispondenti ai nodi che si sovrappongono
+#   # Le ultime 'degree' colonne si sovrappongono esattamente alle prime 'degree' colonne del cerchio
+#   n_col_raw <- ncol(Basis_raw)
+#   
+#   Basis_periodic <- Basis_raw[, 1:(n_col_raw - degree), drop = FALSE]
+#   
+#   # Sommiamo l'effetto ciclico delle ultime colonne sulle prime
+#   for(k in 1:degree){
+#     Basis_periodic[, k] <- Basis_periodic[, k] + Basis_raw[, n_col_raw - degree + k]
+#   }
+#   
+#   # Ora la matrice ha dimensione esattamente: length(thetas) x L
+#   return(Basis_periodic)
+# }
 
+# L = 10
 
 # Useful function for K1 and K2 -----
 K1_construction <- function(J){ # smoothness constraint
@@ -178,6 +217,8 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
 
 # MCMC Util functions ----
 
+
+
 init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, n){
   # n --> number of units 
   param <- list()
@@ -186,6 +227,10 @@ init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, n){
   param$tau <- tau
   param$lambdas <- lambdas
   param$thetas <- thetas
+  param$gaps <- c(thetas[1], diff(thetas), 2*pi- thetas[param$k_l])/(2*pi)
+  #param$omega_theta <- log(param$gaps)
+  param$omega_theta <- log(param$gaps) - mean(log(param$gaps))
+  param$thetas_sorted <- sort(thetas)
   param$betas <- as.matrix(betas)
   param$Sigma <- Sigma 
   param$eta <- eta
@@ -204,7 +249,7 @@ init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, n){
 
 hyperparameters <- function(a_tau, b_tau, n_basis, degree,
                             width_theta = pi/4, m = 8, nu, psi, n, a, b, Sigma_eta = diag(1000, nrow = 2, ncol = 2),
-                            tol = 1e-10){
+                            tol = 1e-10, X){
   
   hyper <- list()
   # tau block -----
@@ -217,6 +262,7 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   hyper$n_basis <- n_basis
   hyper$degree <- degree
   J <- n_basis + degree # find the number of basis
+  #J <- n_basis
   K1 <- K1_construction(J) # construct K1
   K2 <- K2_construction(J) #construct K2
   hyper$K <- (K1 + K2)
@@ -244,6 +290,7 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   # Lambda block ----
   hyper$width_lambda <- width_theta
   hyper$log_lik <- 0
+  k_l <- dim(X)[1]
   
   # Sigma block ----
   hyper$nu <- nu
@@ -264,10 +311,11 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   # hyper$b <- b
   # hyper$log_lik_a <- 0
   
-  hyper$lambda_a <- matrix((2.38^2), nrow = n)
+  hyper$lambda_a <- matrix(2.38^2, nrow = n)
   hyper$mu_a <- matrix(0, nrow = n)
-  hyper$Sigma_a <- matrix(0.01, nrow = n)
+  hyper$Sigma_a <- matrix(1e-8, nrow = n)
   #hyper$L_a <- chol(hyper$lambda_a*hyper$Sigma_a)
+  hyper$alpha_acc <- matrix(0, nrow = n)
   hyper$gamma_a <- 1
   hyper$a_opt <- 0.44
   hyper$a_aver_a <- numeric(n)
@@ -283,6 +331,12 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   hyper$Sigma_eta_new <- hyper$Sigma_eta
   hyper$mu_new <- matrix(0, nrow = n, ncol = 2)
   
+  hyper$lambda_lambda <- matrix(2.38^2, nrow = n)
+  hyper$mu_lambda <- matrix(0, nrow = n)
+  hyper$Sigma_lambda <- matrix(1e-8, nrow = n)
+  hyper$gamma_lambda <- 1
+  hyper$lambda_opt <- 0.44
+  hyper$lambda_acc <- matrix(0, nrow = n)
   return(hyper)
 }
 

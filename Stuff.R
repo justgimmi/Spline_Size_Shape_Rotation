@@ -72,7 +72,7 @@ beta_values <- c(0.73331465, 0.27866933, -0.04889285, -0.28155420, -0.53854766, 
 n_points <- 25
 # Create evenly spaced angles from 0 to almost 2*pi
 degree = 3
-sam <- in_model_sample(n = 100, K_l = length(thetas), thetas = thetas, n_int_knots = 10, degree = 3, tau = 0.3, 
+sam <- in_model_sample(n = 100, K_l = length(thetas), thetas = thetas, n_int_knots = 10, degree = 3, tau = 0.2, 
                        beta_values = NA)
 
 rot <- sam$mu
@@ -93,7 +93,7 @@ lines(c(X_i[,1], X_i[1,1]), c(X_i[,2], X_i[1,2]), col = "blue", lwd = 2)
 
 sum(sam$betas)
 sam$betas
-
+length(sam$betas)
 
 data <- read.csv("src/saraghi_final_dataset.csv")
 data|>

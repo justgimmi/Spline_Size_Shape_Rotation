@@ -112,9 +112,9 @@ eval_log_lik_alpha <- function(alpha_candidate, hyper, init, k_l, X, i) {
 
 sample_alpha <- function(init, hyper, X, k_l, burn = TRUE){
   n <- init$n
-  hyper$t <- hyper$t + 1
+  #hyper$t <- hyper$t + 1
   for (i in 1:n) {
-    alpha_candidate <- log(init$alphas[i]) + rnorm(n = 1, sd = sqrt(hyper$lambda_a[i]*hyper$Sigma_a[i]))
+    alpha_candidate <- log(init$alphas[i]) + rnorm(n = 1, sd = sqrt(hyper$lambda_a[i] * hyper$Sigma_a[i]))
     res_cand <- eval_log_lik_alpha(alpha_candidate, hyper, init, k_l, X, i)
     u <- runif(n = 1)
     alpha <- res_cand$log_lik - hyper$log_lik_a[i]
@@ -126,6 +126,7 @@ sample_alpha <- function(init, hyper, X, k_l, burn = TRUE){
       init$mean_i[,,i] <- res_cand$mean_i
       init$residual[,,i] <- res_cand$residual
       hyper$log_lik_a[i] <- res_cand$log_lik
+      hyper$alpha_acc[i] <-  hyper$alpha_acc[i] + 1
       
     }
     
@@ -135,14 +136,9 @@ sample_alpha <- function(init, hyper, X, k_l, burn = TRUE){
       hyper$lambda_a[i] <- hyper$lambda_a[i]*exp(hyper$gamma_a *(min(exp(alpha), 1) - hyper$a_opt))
       hyper$Sigma_a[i] <- hyper$Sigma_a[i] + hyper$gamma_a *((log(init$alphas[i]) - hyper$mu_a[i])^2 - hyper$Sigma_a[i])
       hyper$mu_a[i] <- hyper$mu_a[i] + hyper$gamma_a *(log(init$alphas[i])- hyper$mu_a[i])
-      
     }
     
   }
   hyper$log_lik <- log_density(init)
-  # app <- list()
-  # app$init <- init
-  # app$hyper <- hyper
-  #return(app)
 
 }
