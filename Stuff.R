@@ -53,10 +53,15 @@ plot(m)
 
 
 # Simulation ------
-
-
-
-n_points <- 25
+# A <- hyper$Eigen_vector_null
+# base <- t(A) %*% A
+# eig <- eigen(base)
+# A_bar <- t(eig$vectors[, eig$values < 1e-10])
+# matrice <- rbind(A, A_bar)
+# det(matrice)
+# inv_matrice <- solve(matrice)
+# A_bar %*% t(A)
+n_points <- 18
 # Create evenly spaced angles from 0 to almost 2*pi
 thetas <- seq(0 + 0.0001, 2 * pi - 0.0001, length.out = n_points + 1)[-(n_points + 1)]
 # 
@@ -69,7 +74,7 @@ thetas <- seq(0 + 0.0001, 2 * pi - 0.0001, length.out = n_points + 1)[-(n_points
 
 beta_values <- c(0.73331465, 0.27866933, -0.04889285, -0.28155420, -0.53854766, -0.46705397, 
                     -0.32019879, -0.11568639 ,-0.10122263, 0.29319813, 0.56797438)
-n_points <- 25
+n_points <- 18
 # Create evenly spaced angles from 0 to almost 2*pi
 degree = 3
 sam <- in_model_sample(n = 100, K_l = length(thetas), thetas = thetas, n_int_knots = 10, degree = 3, tau = 0.2, 
@@ -88,12 +93,48 @@ lines(c(rot[,1], rot[1,1]), c(rot[,2], rot[1,2]), col = "forestgreen", lwd = 2)
 plot(mu_i, asp = 1, pch = 21, bg = "darkred", main = "mu for the i-th unit")
 lines(c(mu_i[,1], mu_i[1,1]), c(mu_i[,2], mu_i[1,2]), col = "red", lwd = 2)
 
-plot(X_i, asp = 1, pch = 21, bg = "darkblue", main = "Observed Conf for unit i")
-lines(c(X_i[,1], X_i[1,1]), c(X_i[,2], X_i[1,2]), col = "blue", lwd = 2)
 
+plot(X_i, asp = 1, pch = 21, bg = "darkred", main = "mu for the i-th unit")
+lines(c(X_i[,1], X_i[1,1]), c(X_i[,2], X_i[1,2]), col = "red", lwd = 2)
+k = 18
+k <- dim(sam$X)[1] # recuperiamo il numero di landmark
+prova <- array(0, dim  = c(100, k, 2))
+for (i in 1:100) {
+  eta_matrix <- matrix(sam$eta[i, ], nrow = k, ncol = 2, byrow = TRUE)
+  mu_i <- sam$X[,,i] - eta_matrix
+  
+  mu_i <- mu_i / sam$alphas[i]
+  
+  R_inv <- Rmat(sam$lambda[i])
+  mu_i <- mu_i %*% R_inv
+  
+  # 4. PLOT
+  prova[i,,] <- mu_i
+  plot(mu_i, asp = 1, pch = 21, bg = "darkred", 
+       main = paste("Mu ricostruito per l'unità", i),
+       xlim = c(-2, 2), ylim = c(-1.5, 1.5)) 
+  lines(c(mu_i[,1], mu_i[1,1]), c(mu_i[,2], mu_i[1,2]), col = "red", lwd = 2)
+}
+par(mfrow = c(1, 1))
+mean_behav <- apply(prova, MARGIN = c(2, 3), FUN = mean)
+plot(mean_behav, xlim = c(-1, 1.5), pch = 16, ylim = c(-0.9, 0.9))
+#plot()
+for (i in 1:100) {
+  points(prova[i,,], asp = 1, pch = 16, col = "red")
+  
+}
+points(apply(prova, MARGIN = c(2, 3), FUN = mean), asp = 1, pch = 16,
+     xlim = c(-0.5, 0.5), ylim = c(-1, 1))
+plot(apply(prova, MARGIN = c(2, 3), FUN = mean))
+i = 1
+sam$X - sam$mu_i
+(X_i )
 sum(sam$betas)
 sam$betas
 length(sam$betas)
+R<- matrix(c(cos(sam$lambda[i]), -sin(sam$lambda[i]), sin(sam$lambda[i]), cos(sam$lambda[i])), 
+                 byrow = T, nrow = 2, ncol = 2)
+sam$alphas[i]^2 *(t(R) %*%sam$Sigma_e %*%R)
 
 data <- read.csv("src/saraghi_final_dataset.csv")
 data|>
@@ -105,3 +146,37 @@ for (i in 1:nrow(Sargus_data)) {
   final_array[,,i] <- matrix(row_data, nrow = 19, ncol = 2, byrow = TRUE)
 }
 sam <- final_array
+
+
+
+k <- 19
+prova <- array(0, dim  = c(120, k, 2))
+for (i in 1:120) {
+  eta_matrix <- matrix(init_env$eta[i, ], nrow = k, ncol = 2, byrow = TRUE)
+  mu_i <- X[,,i] - eta_matrix
+  
+  mu_i <- mu_i / init_env$alphas[i]
+  
+  R_inv <- Rmat(init_env$lambdas[i])
+  mu_i <- mu_i %*% R_inv
+  
+  # 4. PLOT
+  prova[i,,] <- mu_i
+  plot(mu_i, asp = 1, pch = 21, bg = "darkred", 
+       main = paste("Mu ricostruito per l'unità", i),
+       xlim = c(-2, 2), ylim = c(-1.5, 1.5)) 
+  lines(c(mu_i[,1], mu_i[1,1]), c(mu_i[,2], mu_i[1,2]), col = "red", lwd = 2)
+}
+par(mfrow = c(1, 1))
+mean_behav <- apply(prova, MARGIN = c(2, 3), FUN = mean)
+plot(mean_behav, xlim = c(-2, 1.5), pch = 16, ylim = c(-1, 1), asp = 1)
+#plot()
+for (i in 1:120) {
+  points(prova[i,,], asp = 1, pch = 16, col = "red")
+  
+}
+points(apply(prova, MARGIN = c(2, 3), FUN = mean), asp = 1, pch = 16,
+       xlim = c(-0.5, 0.5), ylim = c(-1, 1))
+plot(apply(prova, MARGIN = c(2, 3), FUN = mean))
+
+load("Sim2.RData")

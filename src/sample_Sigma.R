@@ -48,3 +48,4 @@ sample_Sigma <- function(init, hyper, k_l){
   # return(out)
   
 }
+
