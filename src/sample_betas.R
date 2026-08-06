@@ -14,7 +14,8 @@ eval_log_lik_beta <- function(gamma_cand, init, hyper, X, k_l){
 
     eta_matrix <- matrix(init$eta[i,], nrow = k_l, ncol = 2, byrow = T)
     mean_i[,,i] <- init$alphas[i]*(mean%*%init$R[,,i]) + eta_matrix # compute the mean configuration for every unit
-    residual[,,i] <- t(X[,,i] - mean_i[,,i])%*%(X[,,i] - mean_i[,,i])
+    res <- backsolve(init$chol_c,X[,,i] - mean_i[,,i],  transpose = TRUE)
+    residual[,,i] <- t(res)%*%res
   }
   
   val <- sum(init$Q_R[1,1,] * residual[1,1,] +
@@ -22,7 +23,8 @@ eval_log_lik_beta <- function(gamma_cand, init, hyper, X, k_l){
                init$Q_R[2,1,] * residual[1,2,] +
                init$Q_R[2,2,] * residual[2,2,])
   
-  val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma))
+  val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma)) -
+    init$n*log(det(init$C))
   return(list(log_lik =  -0.5 * val + val_2, residual = residual, mean = mean, mean_i = mean_i))
 }
 

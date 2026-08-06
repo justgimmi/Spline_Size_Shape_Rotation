@@ -1,219 +1,219 @@
-# # Sample the angle parameters -----
+# # # Sample the angle parameters -----
+# # 
+# # 
+# eval_log_lik_l <- function(theta_candidate, hyper, init, l, Q_R_11, Q_R_22, Q_R_12, X) {
+#   # this function is just a wrap up to compute the contribution of the new element inside the log-lik
+#   theta_mod <- theta_candidate %% (2*pi)
+#   #theta_mod <- theta_candidate
+#   B_raw <- Basis_Construction(theta_mod, hyper$n_basis, hyper$degree)
+#   r_raw <- as.numeric(exp(B_raw %*% as.vector(init$betas)))
+#   mean_raw <- c(r_raw * cos(theta_mod), r_raw * sin(theta_mod))
+# 
+#   out_x <- mean_raw[1] * init$R[1, 1, ] + mean_raw[2] * init$R[2, 1, ]
+#   out_y <- mean_raw[1] * init$R[1, 2, ] + mean_raw[2] * init$R[2, 2, ]
+# 
+#   m_i_1 <- init$alphas * out_x + init$eta[, 1]
+#   m_i_2 <- init$alphas * out_y + init$eta[, 2]
+# 
+#   v_x <- X[l, 1, ] - m_i_1
+#   v_y <- X[l, 2, ] - m_i_2
+#   quad <- v_x^2 * Q_R_11 + 2 * v_x * v_y * Q_R_12 + v_y^2 * Q_R_22
+# 
+#   return(list(log_lik = -0.5 * sum(quad), mean_i_1 = m_i_1, mean_i_2 = m_i_2,
+#               r = r_raw, mean = mean_raw, v_x = v_x, v_y = v_y))
+# }
+# # # # #
+# # sample_theta <- function(init, hyper, X){
+# #   # This function build the slice sampler for the angle parameters
+# #   n <- init$n # number of samples
+# #   k <- dim(X)[1] # number of landmarks
+# #   w <- hyper$width_theta # estimated size of the interval
+# #   m <- hyper$m
+# #   # In this way, for each unit, we are decomposing the R^TSigma^-1R in three different elements
+# #   Q_R_11 <- init$Q_R[1,1,]
+# #   Q_R_12 <- init$Q_R[1,2,]
+# #   Q_R_22 <- init$Q_R[2,2,]
+# # 
+# #   # We want to implement a stepping out procedure as in Neal 2003
+# # 
+# #   for (l in 1:k) {
+# #     e <- rexp(1)
+# #     #log_thresh <- hyper$log_theta - e
+# #     v <- runif(1)
+# #     left <- init$thetas[l] - v * w
+# #     right <- left + w
+# #     bool <- TRUE
+# #     theta_l <- init$thetas[l]
+# #     v_old_x <- X[l, 1, ] - init$mean_i[l, 1, ] # compute the old value for the residuals x
+# #     v_old_y <- X[l, 2, ] - init$mean_i[l, 2, ] # compute the old value for the residuals x
+# #     quad_old <- v_old_x^2 * Q_R_11 +
+# #       2 * v_old_x * v_old_y * Q_R_12 +
+# #       v_old_y^2 * Q_R_22 # this is the contribution of the l-th landmark on the log-likelihood
+# #     # it is very easy to evaluate and it is the only part changing in the likelihood to be honest
+# #     log_lik_l_old <- -0.5 * sum(quad_old)
+# #     log_thresh <- log_lik_l_old - e
+# #     u <- runif(1)
+# #     J <- floor(m*u)
+# #     up <- (m-1) - J
+# # 
+# #     # STEPPING OUT
+# #     while ((right - left) < 2*pi && eval_log_lik_l(left, hyper, init, l, Q_R_11, Q_R_22, Q_R_12, X)$log_lik >= log_thresh && J > 0) {
+# #       left <- left - w
+# #        J <- J - 1
+# #     }
+# #     while ((right - left) < 2*pi && eval_log_lik_l(right, hyper, init,l, Q_R_11, Q_R_22, Q_R_12, X)$log_lik >= log_thresh && up > 0) {
+# # 
+# #       right <- right + w
+# #       up <- up - 1
+# #     }
+# # 
+# #     if ((right - left) >= 2*pi) {
+# #       right <- left + 2*pi
+# #     }
+# #     #print(c(left, right))
+# #     while (bool == TRUE) {
+# #       theta_raw <- left + runif(n = 1, min = 0, max = 1)*(right - left)
+# #       res_cand <-  eval_log_lik_l(theta_raw, hyper, init, l, Q_R_11, Q_R_22, Q_R_12, X)
+# #       log_theta_prop <- res_cand$log_lik
+# # 
+# #       if (log_theta_prop >= log_thresh) {
+# #         theta_cand <- theta_raw %% (2*pi)
+# #         init$thetas[l] <- theta_cand
+# #         init$r[l] <- res_cand$r
+# #         init$mean[l, ] <- res_cand$mean
+# # 
+# #         init$residual[1, 1, ] <- init$residual[1, 1, ] - v_old_x^2 + res_cand$v_x^2
+# #         init$residual[1, 2, ] <- init$residual[1, 2, ] - v_old_x * v_old_y + res_cand$v_x * res_cand$v_y
+# #         init$residual[2, 1, ] <- init$residual[1, 2, ]
+# #         init$residual[2, 2, ] <- init$residual[2, 2, ] - v_old_y^2 + res_cand$v_y^2
+# # 
+# #         init$mean_i[l, 1, ] <- res_cand$mean_i_1
+# #         init$mean_i[l, 2, ] <- res_cand$mean_i_2
+# #         hyper$log_lik <- hyper$log_lik - log_lik_l_old + res_cand$log_lik
+# # 
+# #         bool <- FALSE
+# #       } else {
+# #         if (theta_raw < theta_l) {
+# #           left <- theta_raw
+# #         } else {
+# #           right <- theta_raw
+# #         }
+# #       }
+# #     }
+# #   }
+# #   hyper$log_lik <- log_density(init)
+# #   hyper$B_sim <- Basis_Construction(init$thetas, hyper$n_basis, hyper$degree)
+# # 
+# #   # return(list(init = init, hyper = hyper))
+# # }
+# 
+# #
 # 
 # 
-eval_log_lik_l <- function(theta_candidate, hyper, init, l, Q_R_11, Q_R_22, Q_R_12, X) {
-  # this function is just a wrap up to compute the contribution of the new element inside the log-lik
-  theta_mod <- theta_candidate %% (2*pi)
-  #theta_mod <- theta_candidate
-  B_raw <- Basis_Construction(theta_mod, hyper$n_basis, hyper$degree)
-  r_raw <- as.numeric(exp(B_raw %*% as.vector(init$betas)))
-  mean_raw <- c(r_raw * cos(theta_mod), r_raw * sin(theta_mod))
-
-  out_x <- mean_raw[1] * init$R[1, 1, ] + mean_raw[2] * init$R[2, 1, ]
-  out_y <- mean_raw[1] * init$R[1, 2, ] + mean_raw[2] * init$R[2, 2, ]
-
-  m_i_1 <- init$alphas * out_x + init$eta[, 1]
-  m_i_2 <- init$alphas * out_y + init$eta[, 2]
-
-  v_x <- X[l, 1, ] - m_i_1
-  v_y <- X[l, 2, ] - m_i_2
-  quad <- v_x^2 * Q_R_11 + 2 * v_x * v_y * Q_R_12 + v_y^2 * Q_R_22
-
-  return(list(log_lik = -0.5 * sum(quad), mean_i_1 = m_i_1, mean_i_2 = m_i_2,
-              r = r_raw, mean = mean_raw, v_x = v_x, v_y = v_y))
-}
-# # # #
-# sample_theta <- function(init, hyper, X){
-#   # This function build the slice sampler for the angle parameters
-#   n <- init$n # number of samples
-#   k <- dim(X)[1] # number of landmarks
-#   w <- hyper$width_theta # estimated size of the interval
+# sample_theta_gaps <- function(init, hyper, X){
+#   n <- init$n
+#   k <- dim(X)[1]
+#   w <- hyper$width_theta
 #   m <- hyper$m
-#   # In this way, for each unit, we are decomposing the R^TSigma^-1R in three different elements
 #   Q_R_11 <- init$Q_R[1,1,]
 #   Q_R_12 <- init$Q_R[1,2,]
 #   Q_R_22 <- init$Q_R[2,2,]
-# 
-#   # We want to implement a stepping out procedure as in Neal 2003
-# 
+#   
+#   # Converti a gap
+#   delta <- numeric(k)
+#   delta[1] <- init$thetas[1]  # delta[1] = theta[1] - 0
+#   for (l in 2:k) {
+#     delta[l] <- init$thetas[l] - init$thetas[l-1]
+#   }
+#   
+#   # Campiona ogni gap
 #   for (l in 1:k) {
-#     e <- rexp(1)
-#     #log_thresh <- hyper$log_theta - e
-#     v <- runif(1)
-#     left <- init$thetas[l] - v * w
-#     right <- left + w
-#     bool <- TRUE
-#     theta_l <- init$thetas[l]
-#     v_old_x <- X[l, 1, ] - init$mean_i[l, 1, ] # compute the old value for the residuals x
-#     v_old_y <- X[l, 2, ] - init$mean_i[l, 2, ] # compute the old value for the residuals x
-#     quad_old <- v_old_x^2 * Q_R_11 +
-#       2 * v_old_x * v_old_y * Q_R_12 +
-#       v_old_y^2 * Q_R_22 # this is the contribution of the l-th landmark on the log-likelihood
-#     # it is very easy to evaluate and it is the only part changing in the likelihood to be honest
+#     
+#     # Likelihood corrente
+#     v_old_x <- X[l, 1, ] - init$mean_i[l, 1, ]
+#     v_old_y <- X[l, 2, ] - init$mean_i[l, 2, ]
+#     quad_old <- v_old_x^2 * Q_R_11 + 2 * v_old_x * v_old_y * Q_R_12 + v_old_y^2 * Q_R_22
 #     log_lik_l_old <- -0.5 * sum(quad_old)
+#     
+#     # Slice sampler SUL GAP (senza vincoli espliciti)
+#     e <- rexp(1)
 #     log_thresh <- log_lik_l_old - e
-#     u <- runif(1)
-#     J <- floor(m*u)
-#     up <- (m-1) - J
-# 
-#     # STEPPING OUT
-#     while ((right - left) < 2*pi && eval_log_lik_l(left, hyper, init, l, Q_R_11, Q_R_22, Q_R_12, X)$log_lik >= log_thresh && J > 0) {
-#       left <- left - w
-#        J <- J - 1
+#     
+#     v <- runif(1)
+#     w_actual <- w
+#     left <- delta[l] - v * w_actual
+#     right <- left + w_actual
+#     
+#     bool <- TRUE
+#     delta_l <- delta[l]
+#     max_iter <- 1000
+#     iter <- 0
+#     
+#     left <- max(left, 1e-6)   # delta deve essere positivo
+#     right <- max(right, 1e-6)
+#     
+#     # Stepping out
+#     J <- floor(m * runif(1))
+#     up <- (m - 1) - J
+#     
+#     while (J > 0) {
+#       # Calcola theta proposto da questo gap
+#       theta_prop <- if(l == 1) left else sum(delta[1:(l-1)]) + left
+#       res_left <- eval_log_lik_l(theta_prop, hyper, init, l, Q_R_11, Q_R_22, Q_R_12, X)
+#       if (res_left$log_lik < log_thresh) break
+#       left <- left - w_actual
+#       left <- max(left, 1e-6)
+#       J <- J - 1
 #     }
-#     while ((right - left) < 2*pi && eval_log_lik_l(right, hyper, init,l, Q_R_11, Q_R_22, Q_R_12, X)$log_lik >= log_thresh && up > 0) {
-# 
-#       right <- right + w
+#     
+#     while (up > 0) {
+#       theta_prop <- if(l == 1) right else sum(delta[1:(l-1)]) + right
+#       res_right <- eval_log_lik_l(theta_prop, hyper, init, l, Q_R_11, Q_R_22, Q_R_12, X)
+#       if (res_right$log_lik < log_thresh) break
+#       right <- right + w_actual
 #       up <- up - 1
 #     }
-# 
-#     if ((right - left) >= 2*pi) {
-#       right <- left + 2*pi
-#     }
-#     #print(c(left, right))
-#     while (bool == TRUE) {
-#       theta_raw <- left + runif(n = 1, min = 0, max = 1)*(right - left)
-#       res_cand <-  eval_log_lik_l(theta_raw, hyper, init, l, Q_R_11, Q_R_22, Q_R_12, X)
+#     
+#     # Shrinkage
+#     while (bool && iter < max_iter) {
+#       iter <- iter + 1
+#       delta_raw <- left + runif(1) * (right - left)
+#       delta_raw <- max(delta_raw, 1e-6)
+#       
+#       theta_prop <- if(l == 1) delta_raw else sum(delta[1:(l-1)]) + delta_raw
+#       
+#       res_cand <- eval_log_lik_l(theta_prop, hyper, init, l, Q_R_11, Q_R_22, Q_R_12, X)
 #       log_theta_prop <- res_cand$log_lik
-# 
+#       
 #       if (log_theta_prop >= log_thresh) {
-#         theta_cand <- theta_raw %% (2*pi)
-#         init$thetas[l] <- theta_cand
+#         # Accettato
+#         delta[l] <- delta_raw
+#         init$thetas[l] <- if(l == 1) delta[l] else sum(delta[1:l])
 #         init$r[l] <- res_cand$r
 #         init$mean[l, ] <- res_cand$mean
-# 
+#         
 #         init$residual[1, 1, ] <- init$residual[1, 1, ] - v_old_x^2 + res_cand$v_x^2
 #         init$residual[1, 2, ] <- init$residual[1, 2, ] - v_old_x * v_old_y + res_cand$v_x * res_cand$v_y
 #         init$residual[2, 1, ] <- init$residual[1, 2, ]
 #         init$residual[2, 2, ] <- init$residual[2, 2, ] - v_old_y^2 + res_cand$v_y^2
-# 
 #         init$mean_i[l, 1, ] <- res_cand$mean_i_1
 #         init$mean_i[l, 2, ] <- res_cand$mean_i_2
+#         
 #         hyper$log_lik <- hyper$log_lik - log_lik_l_old + res_cand$log_lik
-# 
 #         bool <- FALSE
 #       } else {
-#         if (theta_raw < theta_l) {
-#           left <- theta_raw
+#         if (delta_raw < delta_l) {
+#           left <- delta_raw
 #         } else {
-#           right <- theta_raw
+#           right <- delta_raw
 #         }
 #       }
 #     }
 #   }
+#   
 #   hyper$log_lik <- log_density(init)
 #   hyper$B_sim <- Basis_Construction(init$thetas, hyper$n_basis, hyper$degree)
-# 
-#   # return(list(init = init, hyper = hyper))
 # }
-
-#
-
-
-sample_theta_gaps <- function(init, hyper, X){
-  n <- init$n
-  k <- dim(X)[1]
-  w <- hyper$width_theta
-  m <- hyper$m
-  Q_R_11 <- init$Q_R[1,1,]
-  Q_R_12 <- init$Q_R[1,2,]
-  Q_R_22 <- init$Q_R[2,2,]
-  
-  # Converti a gap
-  delta <- numeric(k)
-  delta[1] <- init$thetas[1]  # delta[1] = theta[1] - 0
-  for (l in 2:k) {
-    delta[l] <- init$thetas[l] - init$thetas[l-1]
-  }
-  
-  # Campiona ogni gap
-  for (l in 1:k) {
-    
-    # Likelihood corrente
-    v_old_x <- X[l, 1, ] - init$mean_i[l, 1, ]
-    v_old_y <- X[l, 2, ] - init$mean_i[l, 2, ]
-    quad_old <- v_old_x^2 * Q_R_11 + 2 * v_old_x * v_old_y * Q_R_12 + v_old_y^2 * Q_R_22
-    log_lik_l_old <- -0.5 * sum(quad_old)
-    
-    # Slice sampler SUL GAP (senza vincoli espliciti)
-    e <- rexp(1)
-    log_thresh <- log_lik_l_old - e
-    
-    v <- runif(1)
-    w_actual <- w
-    left <- delta[l] - v * w_actual
-    right <- left + w_actual
-    
-    bool <- TRUE
-    delta_l <- delta[l]
-    max_iter <- 1000
-    iter <- 0
-    
-    left <- max(left, 1e-6)   # delta deve essere positivo
-    right <- max(right, 1e-6)
-    
-    # Stepping out
-    J <- floor(m * runif(1))
-    up <- (m - 1) - J
-    
-    while (J > 0) {
-      # Calcola theta proposto da questo gap
-      theta_prop <- if(l == 1) left else sum(delta[1:(l-1)]) + left
-      res_left <- eval_log_lik_l(theta_prop, hyper, init, l, Q_R_11, Q_R_22, Q_R_12, X)
-      if (res_left$log_lik < log_thresh) break
-      left <- left - w_actual
-      left <- max(left, 1e-6)
-      J <- J - 1
-    }
-    
-    while (up > 0) {
-      theta_prop <- if(l == 1) right else sum(delta[1:(l-1)]) + right
-      res_right <- eval_log_lik_l(theta_prop, hyper, init, l, Q_R_11, Q_R_22, Q_R_12, X)
-      if (res_right$log_lik < log_thresh) break
-      right <- right + w_actual
-      up <- up - 1
-    }
-    
-    # Shrinkage
-    while (bool && iter < max_iter) {
-      iter <- iter + 1
-      delta_raw <- left + runif(1) * (right - left)
-      delta_raw <- max(delta_raw, 1e-6)
-      
-      theta_prop <- if(l == 1) delta_raw else sum(delta[1:(l-1)]) + delta_raw
-      
-      res_cand <- eval_log_lik_l(theta_prop, hyper, init, l, Q_R_11, Q_R_22, Q_R_12, X)
-      log_theta_prop <- res_cand$log_lik
-      
-      if (log_theta_prop >= log_thresh) {
-        # Accettato
-        delta[l] <- delta_raw
-        init$thetas[l] <- if(l == 1) delta[l] else sum(delta[1:l])
-        init$r[l] <- res_cand$r
-        init$mean[l, ] <- res_cand$mean
-        
-        init$residual[1, 1, ] <- init$residual[1, 1, ] - v_old_x^2 + res_cand$v_x^2
-        init$residual[1, 2, ] <- init$residual[1, 2, ] - v_old_x * v_old_y + res_cand$v_x * res_cand$v_y
-        init$residual[2, 1, ] <- init$residual[1, 2, ]
-        init$residual[2, 2, ] <- init$residual[2, 2, ] - v_old_y^2 + res_cand$v_y^2
-        init$mean_i[l, 1, ] <- res_cand$mean_i_1
-        init$mean_i[l, 2, ] <- res_cand$mean_i_2
-        
-        hyper$log_lik <- hyper$log_lik - log_lik_l_old + res_cand$log_lik
-        bool <- FALSE
-      } else {
-        if (delta_raw < delta_l) {
-          left <- delta_raw
-        } else {
-          right <- delta_raw
-        }
-      }
-    }
-  }
-  
-  hyper$log_lik <- log_density(init)
-  hyper$B_sim <- Basis_Construction(init$thetas, hyper$n_basis, hyper$degree)
-}
 
 
 # # #
@@ -595,12 +595,14 @@ eval_log_lik_theta_joint <- function(theta_cand, init, hyper, X) {
   val <- 0
   mean_i_array <- array(0, dim = c(k_l, 2, n))
   residual_array <- array(0, dim = c(2, 2, n))
-  
+  mat_cand <- covariance_mat(init$mat_dist, theta_cand)
+  C_cand <- exp(-mat_cand/init$phi)
+  chol_c_cand <- chol(C_cand)
   for (i in 1:n) {
     eta_matrix <- matrix(init$eta[i, ], nrow = k_l, ncol = 2, byrow = TRUE)
     mean_i_cand <- init$alphas[i] * (mean_cand %*% init$R[,,i]) + eta_matrix
-    
     res_cand <- X[,,i] - mean_i_cand
+    res_cand <- backsolve(chol_c_cand,res_cand,  transpose = TRUE)
     res_mat <- t(res_cand) %*% res_cand
     
     mean_i_array[,,i] <- mean_i_cand
@@ -608,14 +610,17 @@ eval_log_lik_theta_joint <- function(theta_cand, init, hyper, X) {
     val <- val + sum(init$Q_R[,,i] * res_mat)
   }
   
-  val_2 <- -2 * k_l * sum(log(init$alphas)) - ((n * k_l) / 2) * log(det(init$Sigma))
+  val_2 <- -2 * k_l * sum(log(init$alphas)) - ((n * k_l) / 2) * log(det(init$Sigma)) - n*log(det(C_cand))
   log_lik_total <- -0.5 * val + val_2
   
   return(list(log_lik = log_lik_total, 
               mean = mean_cand, 
               mean_i = mean_i_array, 
               residual = residual_array,
-              B_sim = B_cand))
+              B_sim = B_cand,
+              C = C_cand, 
+              chol_c = chol_c_cand,
+              mat_cand = mat_cand))
 }
 
 
@@ -623,7 +628,7 @@ sample_theta_logit_normal <- function(init, hyper, X){
   # this function tries to implement the logit-normal reparametrization of the gaps  
   k_l <- init$k_l
   #beta_samp <- sqrt(init$tau) * hyper$U_lambda%*%beta_samp
-  omega_samp <- rnorm(k_l + 1)
+  omega_samp <- c(rnorm(k_l), 0)
   u <- runif(n = 1)
   thresh <- hyper$log_lik + log(u)
   angle <- runif(n = 1)*2*pi
@@ -657,6 +662,17 @@ sample_theta_logit_normal <- function(init, hyper, X){
   init$residual <- res_cand$residual
   init$mean_i <- res_cand$mean_i
   init$mean <- res_cand$mean
+  init$mat_dist <- res_cand$mat_cand
+  init$C <- res_cand$C
+  init$chol_c <- res_cand$chol_c
   hyper$B_sim <- res_cand$B_sim
+  for (i in 1:k_l) {
+    for (j in 1:k_l) {
+      init$mat_dist[i, j] <- min(2*pi - abs(init$thetas[i] - init$thetas[j]),
+                                  abs(init$thetas[i] - init$thetas[j]))
+      init$mat_dist[j, i] <- init$mat_dist[i, j]
+    }
+  }
+  init$C <- exp(-init$mat_dist/init$phi)
 
 }

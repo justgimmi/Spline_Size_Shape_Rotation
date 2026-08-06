@@ -7,7 +7,7 @@ source("src/sample_Sigma.R")
 source("src/sample_alphas.R")
 source("src/sample_betas.R")
 source("src/sample_eta.R")
-
+source("src/sample_phi.R")
 total_iter = 100000
 burnin = 30000
 thinning  = 10
@@ -51,6 +51,7 @@ RB_MCMC <- function(total_iter, burnin, thinning,
     for (j in 1:thin) {
       hyper_env$t <- hyper_env$t + 1
       cli_progress_update(id = pbar, inc = 1)
+      sample_phi(init_env, hyper_env, X, burn = burn)
       sample_Sigma(init_env, hyper_env, k_l)
       # sample_theta_gaps(init_env, hyper_env, X)
       #sample_theta_joint(init_env, hyper_env, X)
@@ -98,6 +99,8 @@ RB_MCMC <- function(total_iter, burnin, thinning,
         #print(init_env$eta)
         print(hyper_env$lambda_acc/j)
         print(hyper_env$a_aver_a/j)
+        print(hyper_env$phi_acc/j)
+        print(init_env$phi)
         X_mean <- init_env$mean
         plot(X_mean, asp = 1, pch = 21, bg = "darkblue", main = "Latent mu")
         lines(c(X_mean[,1], X_mean[1,1]), c(X_mean[,2], X_mean[1,2]), col = "blue", lwd = 2)
@@ -151,6 +154,7 @@ RB_MCMC <- function(total_iter, burnin, thinning,
     output$mean_i[[i]] <- init_env$mean_i
     output$mean[i, ,] <- init_env$mean
     output$gammas[i, ] <- init_env$gammas
+    output$phi[i,1] <- init_env$phi
     #setTxtProgressBar(pb, value = i, title = "Ziocan")
     #
     
@@ -167,9 +171,8 @@ RB_MCMC <- function(total_iter, burnin, thinning,
 X <- sam$X
 # X <- X/100
 X <- sam/100
-X <- sam
-hyper <- hyperparameters(1, 5e-4, 10, 3, width_theta = 1, m = 6, nu = 6,
-                         psi = diag(1e-6,2),n = dim(X)[3], a = 0.01, b = 0.01, X = X)
+#X <- sam
+
 X_centered <- array(NA, dim = dim(X))
 
 
@@ -182,6 +185,17 @@ gpa <- procGPA(X_centered, scale = FALSE)
 mean_shape <- gpa$mshape
 theta_init <- atan2(mean_shape[,2], mean_shape[,1])
 theta_init <- ifelse(theta_init < 0, theta_init + 2*pi, theta_init)
+
+mat_dist <- diag(0, nrow = length(theta_init), ncol = length(theta_init)) 
+mat_dist <- covariance_mat(mat_dist,theta_init)
+b_phi <- 2*max(mat_dist)/3
+#b_phi <- pi
+3/max(mat_dist)
+3/min(mat_dist[mat_dist != 0])
+a_phi <- min(mat_dist[mat_dist != 0])/3
+hyper <- hyperparameters(1, 5e-4, 12, 3, width_theta = 1, m = 6, nu = 4,
+                         psi = diag(0.1, nrow = 2),n = dim(X)[3], a = 0.01, b = 0.01, a_phi = a_phi, b_phi = b_phi, X = X)
+hyper$n_basis
 ord <- order(theta_init)
 theta_init <- theta_init[ord]
 mean_shape_ordered <- mean_shape[ord, ]
@@ -209,7 +223,7 @@ X <- X_new
 
 r_emp <- sqrt(mean_shape_ordered[,1]^2 + mean_shape_ordered[,2]^2)
 log_r_emp <- log(r_emp)
-B_init <- Basis_Construction(theta_init, 10, 3)
+B_init <- Basis_Construction(theta_init, 12, 3)
 
 beta_init <- solve(t(B_init) %*% B_init + 1e-1 * diag(ncol(B_init)), t(B_init) %*% log_r_emp)
 
@@ -266,46 +280,37 @@ for (i in 1:dim(X)[3]) {
 }
 
 # Ricava la matrice di covarianza 2x2 reale dei residui iniziali
-Sigma_init <- diag(1, 2)
+# init_residuals is k_l x 2 x n from your GPA-based initialization
+S_hat <- matrix(0, 2, 2)
+for (i in 1:dim(X)[3]) {
+  S_hat <- S_hat + t(init_residuals[,,i]) %*% init_residuals[,,i]
+}
+S_hat <- S_hat / (dim(X)[3] * dim(X)[1])   # average per-landmark-per-subject outer product
+
+nu_prior <- 4
+psi <- (nu_prior - 2 - 1) * S_hat   # so that E[Sigma_e] = S_hat
 #Sigma_init <- diag(0.001, nrow = 2)
 #lambda_init <- rep(0, 120)
 init <- init_param(2,lambda_sync, theta_init,beta_init,
-                   Sigma_init,
-                   eta_sync,alpha_sync, gamma_init, n = dim(X)[3])
-
-
-init$alphas[1] <- 1
-init$lambdas[1] <- 0
-init$eta[1, ] <- c(0, 0)
-prova <- init
-init <- init_param(2,lambda_sync, sam$theta,beta_init,
-                   Sigma_init,
-                   eta_sync,alpha_sync, n = dim(X)[3])
-init_bis <- init_env
-
-hyper$L
-init$lambdas
-plot(X[,,1])
-for (i in 1:25) {
-  text(X[i,1,1], X[i, 2, 1], i)
-  
-}
-init <- init_param(0.01, runif(n = 100)*2*pi, sort(runif(n = 25)*2*pi),rmvnorm_rd(n = 1, mu = 0, Precision =  (1/0.01)*hyper$K, tol = 1e-6),
-                   diag(0.01, nrow = 2),
-                   eta_sync,rgamma(n = 100, 1, 1), n <- dim(X)[3])
+                   S_hat,
+                   eta_sync,alpha_sync, gamma_init, phi = 0.3, n = dim(X)[3])
+# 
+# hyper <- hyperparameters(1, 5e-4, 10, 3, width_theta = 1, m = 6, nu = 4,
+#                          psi = psi,n = dim(X)[3], a = 0.01, b = 0.01, a_phi = a_phi, b_phi = b_phi, X = X)
+# plot(X[,,1])
+# for (i in 1:25) {
+#   text(X[i,1,1], X[i, 2, 1], i)
+#   
+# }
+# init <- init_param(0.01, runif(n = 100)*2*pi, sort(runif(n = 25)*2*pi),rmvnorm_rd(n = 1, mu = 0, Precision =  (1/0.01)*hyper$K, tol = 1e-6),
+#                    diag(0.01, nrow = 2),
+#                    eta_sync,rgamma(n = 100, 1, 1), n <- dim(X)[3])
 # init <- init_param(0.01, runif(n = 100)*2*pi, sam$theta,sam$betas, diag(0.01, nrow = 2),
 #                    sam$eta,rgamma(n = 100, 1, 1), n <- dim(sam$X)[3])
 
-init$betas
-hyper$n_basis
-par(mfrow = c(1,3))
-hyper$Eigen_vector_null%*%sam$betas
-sam$betas
-sam$tau^2
-sam$Sigma_e
 tic()
 par(mfrow = c(1, 3))
-MCMC_samp <- RB_MCMC(total_iter = 80000, burnin = 20000, thinning  = 20, X = X, 
+MCMC_samp <- RB_MCMC(total_iter = 15000, burnin = 5000, thinning  = 10, X = X, 
                      init = init, hyper = hyper)
 toc()
 gcinfo(FALSE)
@@ -367,10 +372,14 @@ save(MCMC_samp,X, file = "Fish_new.RData")
 load("Sim1.RData")
 
 par(mfrow = c(1, 1))
-plot(MCMC_samp$output$lambdas[,2] - MCMC_samp$output$lambdas[,1], type ="l")
+plot((MCMC_samp$output$lambdas[,5] - MCMC_samp$output$lambdas[,1])%%(2*pi), type ="l")
 library(LaplacesDemon)
 ESS(MCMC_samp$output$lambdas[,2] - MCMC_samp$output$lambdas[,1])
-plot((MCMC_samp$output$theta[,3] - MCMC_samp$output$theta[,1]), type = "l")
+plot((MCMC_samp$output$theta[,9] - MCMC_samp$output$theta[,1]) %%(2*pi), type = "l")
+ESS((MCMC_samp$output$theta[,2] - MCMC_samp$output$theta[,1]) %%(2*pi))
+plot(MCMC_samp$output$phi, type = "l")
+plot(density(MCMC_samp$output$phi))
+
 ESS(MCMC_samp$output$theta[,5] - MCMC_samp$output$theta[,2])
 sam$theta[3] - sam$theta[1]
 ESS(MCMC_samp$output$alphas[,2]/MCMC_samp$output$alphas[,1])
@@ -381,6 +390,7 @@ gg_mcmc_diagnostics(MCMC_samp$output$theta, param_name = "theta", real_values = 
 gg_mcmc_diagnostics(MCMC_samp$output$lambda, param_name = "lambda", real_values = NA, TRUE)
 Sigma_samp <- cbind(MCMC_samp$output$Sigma[,1,1], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,2,2])
 gg_mcmc_diagnostics(Sigma_samp, param_name = "Sigma", real_values = c(NA), TRUE)
+gg_mcmc_diagnostics(MCMC_samp$output$phi, param_name = "phi", real_values = c(NA), TRUE)
 gg_mcmc_diagnostics(MCMC_samp$output$alphas, param_name = "alpha", real_values = NA, TRUE)
 gg_mcmc_diagnostics(MCMC_samp$output$betas, param_name = "betas", real_values = NA, TRUE)
 gg_mcmc_diagnostics(MCMC_samp$output$gammas, param_name = "betas", real_values = NA, TRUE)
@@ -424,7 +434,7 @@ for (i in 1:init_env$k_l) {
   
 }
 
-pdf("Risultati_Pesciolini_new.pdf")
+pdf("Risultati_Pesciolini_Rotation.pdf")
 par(mfrow = c(1, 3))
 n = 120
 n_iter <- dim(MCMC_samp$output$mean)[1]
@@ -458,7 +468,7 @@ for (i in 1:n) {
       y = c(mean_low[k,2], mean_low[k,2],
             mean_high[k,2], mean_high[k,2]),
       border = NA,
-      col = rgb(0, 0, 1, 0.15)
+      col = "red"
     )
   }
   
@@ -917,7 +927,7 @@ for (iobs in 1:120) {
     }
   }
 }
-
+gg_mcmc_diagnostics(as.vector(MCMC_samp$output$phi), param_name = "phi", real_values = NA)
 dev.off()
 library(LaplacesDemon)
 par(mfrow = c(1, 1))

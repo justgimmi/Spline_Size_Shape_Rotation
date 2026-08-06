@@ -222,7 +222,22 @@ Rmat <- function(angle) {
   matrix(c(cos(angle), -sin(angle), sin(angle), cos(angle)), nrow = 2, ncol = 2)
 }
 
-init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, gammas, n){
+covariance_mat <- function(mat, thetas){
+  # thetas: vector of angles
+  # mat: K x K covariance matrix
+  # phi: scale parameter of the exponential covariance function
+  k_l <- length(thetas)
+  for (i in 1:k_l) {
+    for (j in 1:k_l) {
+      #d <- min(2*pi - abs(thetas[i] - thetas[j]), abs(thetas[i] - thetas[j]))
+      mat[i, j] <- min(2*pi - abs(thetas[i] - thetas[j]), abs(thetas[i] - thetas[j]))
+      mat[j, i] <- mat[i, j]
+    }
+  }
+  return(mat)
+}
+
+init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, gammas, phi, n){
   # n --> number of units 
   param <- list()
   param$n <- n
@@ -233,7 +248,7 @@ init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, gammas, 
   param$gammas <- gammas
   param$gaps <- c(thetas[1], diff(thetas), 2*pi- thetas[param$k_l])/(2*pi)
   #param$omega_theta <- log(param$gaps)
-  param$omega_theta <- log(param$gaps) - mean(log(param$gaps))
+  param$omega_theta <- log(param$gaps) - log(param$gaps[param$k_l + 1])
   param$thetas_sorted <- sort(thetas)
   param$betas <- as.matrix(betas)
   param$Sigma <- Sigma 
@@ -247,13 +262,19 @@ init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, gammas, 
   param$Sigma_inv <- solve(param$Sigma) # deterministic
   param$Q_R <- array(NA, dim = c(2, 2, n)) # deterministic 
   param$residual <-  array(NA, dim = c(2, 2, n)) #deterministic 
-  
+  param$mat_dist <- diag(0, nrow = length(thetas), ncol = length(thetas)) 
+  param$mat_dist <- covariance_mat(param$mat_dist, thetas)
+  param$C <- exp(-param$mat_dist/phi) # landmark covariance matrix
+  param$chol_c <- chol((param$C)) # cholesky decompoition of the covariance matrix -->
+  # R is dumb so it is upper-triangular
+  param$phi <- phi
   return(param)
+  
 }
 
 hyperparameters <- function(a_tau, b_tau, n_basis, degree,
                             width_theta = pi/4, m = 8, nu, psi, n, a, b, Sigma_eta = diag(1000, nrow = 2, ncol = 2),
-                            tol = 1e-10, X){
+                            tol = 1e-10,a_phi,b_phi,X){
   
   hyper <- list()
   # tau block -----
@@ -288,7 +309,7 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   hyper$A_bar <- t(aux_eig$vectors[,aux_eig$values < tol])
   union_matrix <- rbind(hyper$A, hyper$A_bar)
   inv_union_matrix <- solve(union_matrix)
-  hyper$C_bar <- C_bar <- inv_union_matrix[, (nrow(hyper$A)+1):J ]
+  hyper$C_bar <- inv_union_matrix[, (nrow(hyper$A)+1):J ]
   #hyper$C_bar <- hyper$Eigen_vector %*% hyper$Eigen_matrix # \beta = C_bar \gamma
   #hyper$A_bar <- diag(sqrt(eig_vals[keep]), nrow = hyper$L) %*% t(hyper$Eigen_vector) # \gamma = A_bar \beta
   hyper$U_lambda <- t(chol(t(hyper$C_bar) %*% hyper$K %*% hyper$C_bar))
@@ -346,9 +367,34 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   hyper$gamma_lambda <- 1
   hyper$lambda_opt <- 0.44
   hyper$lambda_acc <- matrix(0, nrow = n)
+  
+  # phi block
+  hyper$lambda_phi <- 2.38^2
+  hyper$mu_phi <- 0
+  hyper$Sigma_phi <- 1e-4
+  #hyper$L_a <- chol(hyper$lambda_a*hyper$Sigma_a)
+  hyper$alpha_phi <- 0
+  hyper$gamma_phi <- 1
+  hyper$a_opt <- 0.44
+  hyper$a_phi <- a_phi
+  hyper$b_phi <- b_phi
+  hyper$phi_acc <- 0
   return(hyper)
 }
 
+
+g_phi <- function(phi_star, a_phi, b_phi){
+  phi <- (exp(phi_star)/(1 + exp(phi_star)))*(b_phi - a_phi) + a_phi
+  return(phi)
+  
+}
+
+g_phi_star <- function(phi, a_phi, b_phi){
+  app <- (phi - a_phi)/(b_phi - a_phi)
+  phi_star <- log(app/(1 - app))
+  return(phi_star)
+  
+}
 create_output <- function(mcmc_iter, k_l, n, L){
   output <- list()
   output$tau <- numeric(mcmc_iter)
@@ -361,6 +407,7 @@ create_output <- function(mcmc_iter, k_l, n, L){
   output$eta <- array(NA, c(mcmc_iter, n, 2))
   output$mean_i <- list()
   output$mean <- array(NA, c(mcmc_iter, k_l, 2))
+  output$phi <- matrix(NA, nrow = mcmc_iter, ncol = 1)
   return(output)
 }
 
@@ -382,7 +429,10 @@ mean_constructor <- function(n_basis, degree, init_param, X){
     eta_matrix <- matrix(init_param$eta[i,], nrow = length(init_param$thetas), ncol = 2, byrow = T)
     init_param$mean_i[,,i] <- init_param$alphas[i]*init_param$mean%*%init_param$R[,,i] + eta_matrix # compute the mean configuration for every unit
     init_param$Q_R[,,i] <- (1/(init_param$alphas[i]^2)) *t(init_param$R[,,i])%*%init_param$Sigma_inv%*%init_param$R[,,i] 
-    init_param$residual[,,i] <- t(X[,,i] - init_param$mean_i[,,i])%*%(X[,,i] - init_param$mean_i[,,i])
+    
+    res <- backsolve(init_param$chol_c,X[,,i] - init_param$mean_i[,,i],  transpose = TRUE)
+    #init_param$residual[,,i] <- t(X[,,i] - init_param$mean_i[,,i])%*%init_param$C %*% (X[,,i] - init_param$mean_i[,,i])
+    init_param$residual[,,i] <- t(res)%*%res
   }
   # return(init_param)
 }
@@ -394,7 +444,7 @@ log_density <- function(init){
                init$Q_R[2,1,] * init$residual[1,2,] +
                init$Q_R[2,2,] * init$residual[2,2,])
   
-  val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma))
+  val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma)) - ((init$n))*log(det(init$C))
   return(-0.5 * val + val_2)
 }
 
