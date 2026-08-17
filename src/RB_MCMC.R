@@ -24,6 +24,9 @@ RB_MCMC <- function(total_iter, burnin, thinning,
   
   init_env <- as.environment(init)
   hyper_env <- as.environment(hyper)
+  hyper_env$Sigma_gamma_inv <-  (1/init_env$tau[1])*hyper_env$K_gamma1 + 
+    (1/init_env$tau[2])*hyper_env$K_gamma2
+  hyper_env$U_lambda <- t(chol(hyper_env$Sigma_gamma_inv))
   #init_env$gammas <- hyper_env$A_bar %*% init_env$betas
   mcmc_iter <- floor((total_iter - burnin)/thinning) # how many iterations do we need to save?
   total_steps <- burnin + (mcmc_iter - 1) * thinning
@@ -68,12 +71,12 @@ RB_MCMC <- function(total_iter, burnin, thinning,
       #sample_lambda(init_env, hyper_env, X, k_l)
       
       #hyper_env$a_new <- hyper_env$L/2 + hyper_env$a_tau # shape parameter
-      hyper_env$a_new <- ncol(hyper_env$C_bar)/2 + hyper_env$a_tau
+      #hyper_env$a_new <- ncol(hyper_env$C_bar)/2 + hyper_env$a_tau
       #hyper_env$b_new <- (t(init_env$betas)%*%hyper_env$K%*%init_env$betas)/2+ hyper_env$b_tau # scale parameter
       #hyper_env$b_new <- (t(init_env$gammas)%*%init_env$gammas)/2+ hyper_env$b_tau
-      hyper_env$b_new <-  (t(init_env$betas) %*% hyper_env$K %*% init_env$betas)/2 + hyper_env$b_tau
-      sample_tau(init_env, a_new = hyper_env$a_new, b_new = hyper_env$b_new) # sample new tau^2
-
+      #hyper_env$b_new <-  (t(init_env$betas) %*% hyper_env$K %*% init_env$betas)/2 + hyper_env$b_tau
+      #sample_tau(init_env, a_new = hyper_env$a_new, b_new = hyper_env$b_new) # sample new tau^2
+      sample_tau(init_env, hyper_env, burn) 
       for (y in 1:n) {
         hyper_env$log_lik_a[y] <- eval_log_lik_alpha(log(init_env$alphas[y]), hyper_env, init_env, k_l, X, y)$log_lik
 
@@ -94,6 +97,7 @@ RB_MCMC <- function(total_iter, burnin, thinning,
         #print(init_env$thetas_sorted)
         #print(init_env$lambdas)
         #print(init_env$alphas)
+        print(hyper_env$tau_acc/j)
         print(init_env$tau)
         print(init_env$Sigma)
         #print(init_env$eta)
@@ -170,9 +174,9 @@ RB_MCMC <- function(total_iter, burnin, thinning,
 
 X <- sam$X
 # X <- X/100
-X <- sam/100
+#X <- sam/100
 #X <- sam
-
+X <- sam/100
 X_centered <- array(NA, dim = dim(X))
 
 
@@ -180,50 +184,83 @@ for (i in 1:dim(X)[3]) {
   X_centered[,,i] <- X[,,i] - matrix(colMeans(X[,,i]), nrow = dim(X)[1], ncol = 2, byrow = TRUE)
 }
 
-gpa <- procGPA(X_centered, scale = FALSE)
+par(mfrow = c(1,1))
 #?procGPA
+gpa <- procGPA(X, scale = TRUE)
+
 mean_shape <- gpa$mshape
+
+theta_gpa <- atan2(mean_shape[,2], mean_shape[,1])
+theta_gpa <- ifelse(theta_gpa < 0, theta_gpa + 2*pi, theta_gpa)
+orders <- order(theta_gpa)
+X <- X[orders, ,]
+# angle of the first landmark
+#shift <- theta_gpa[1] - 0.01
+
+# R_shift <- matrix(
+#   c(cos(shift), -sin(shift),
+#     sin(shift),  cos(shift)),
+#   2, 2, byrow = TRUE
+# )
+# 
+# mean_shape <- mean_shape %*% R_shift
+gpa <- procGPA(X, scale = TRUE)
+
+mean_shape <- gpa$mshape
+
 theta_init <- atan2(mean_shape[,2], mean_shape[,1])
 theta_init <- ifelse(theta_init < 0, theta_init + 2*pi, theta_init)
 
+shift <- theta_init[1] - 0.01
+
+R_shift <- matrix(
+  c(cos(shift), -sin(shift),
+    sin(shift),  cos(shift)),
+  2, 2, byrow = TRUE
+)
+
+mean_shape <- mean_shape %*% R_shift
+theta_init <- atan2(mean_shape[,2], mean_shape[,1])
+theta_init <- ifelse(theta_init < 0, theta_init + 2*pi, theta_init)
+theta_init
+
+#hyper$n_basis
+#ord <- order(theta_init)
+#theta_init <- theta_init[ord]
+mean_shape_ordered <- mean_shape[orders, ]
 mat_dist <- diag(0, nrow = length(theta_init), ncol = length(theta_init)) 
 mat_dist <- covariance_mat(mat_dist,theta_init)
-b_phi <- 2*max(mat_dist)/3
+b_phi <- max(mat_dist)/3
 #b_phi <- pi
-3/max(mat_dist)
-3/min(mat_dist[mat_dist != 0])
 a_phi <- min(mat_dist[mat_dist != 0])/3
-hyper <- hyperparameters(1, 5e-4, 12, 3, width_theta = 1, m = 6, nu = 4,
+hyper <- hyperparameters(1, 5e-4, 6, 3, width_theta = 1, m = 6, nu = 4,
                          psi = diag(0.1, nrow = 2),n = dim(X)[3], a = 0.01, b = 0.01, a_phi = a_phi, b_phi = b_phi, X = X)
-hyper$n_basis
-ord <- order(theta_init)
-theta_init <- theta_init[ord]
-mean_shape_ordered <- mean_shape[ord, ]
 
+hyper$K_gamma2
+hyper$tau_acc
+# X_new <- array(NA, dim = dim(X))
+# for(i in 1:dim(X)[3]) {
+#   X_new[,,i] <- X[orders, , i] # Ordiniamo i landmark per il sarago i
+# }
 
-X_new <- array(NA, dim = dim(X))
-for(i in 1:dim(X)[3]) {
-  X_new[,,i] <- X[ord, , i] # Ordiniamo i landmark per il sarago i
-}
-
-plot(X[,,1])
-for (i in 1:18) {
-  text(X[i,1,1], X[i, 2, 1], i)
-  
-}
-
-plot(X_new[,,1])
-for (i in 1:18) {
-  text(X_new[i,1,1], X_new[i, 2, 1], i)
-  
-}
-
-X <- X_new
+# plot(X[,,1])
+# for (i in 1:18) {
+#   text(X[i,1,1], X[i, 2, 1], i)
+#   
+# }
+# 
+# plot(X_new[,,1])
+# for (i in 1:18) {
+#   text(X_new[i,1,1], X_new[i, 2, 1], i)
+#   
+# }
+X_new <- X
+#X <- X_new
 #theta_init <- sort(theta_init)
 
 r_emp <- sqrt(mean_shape_ordered[,1]^2 + mean_shape_ordered[,2]^2)
 log_r_emp <- log(r_emp)
-B_init <- Basis_Construction(theta_init, 12, 3)
+B_init <- Basis_Construction(theta_init, 6, 3)
 
 beta_init <- solve(t(B_init) %*% B_init + 1e-1 * diag(ncol(B_init)), t(B_init) %*% log_r_emp)
 
@@ -291,9 +328,12 @@ nu_prior <- 4
 psi <- (nu_prior - 2 - 1) * S_hat   # so that E[Sigma_e] = S_hat
 #Sigma_init <- diag(0.001, nrow = 2)
 #lambda_init <- rep(0, 120)
-init <- init_param(2,lambda_sync, theta_init,beta_init,
+init <- init_param(c(0.1, 0.1),lambda_sync, theta_init,beta_init,
                    S_hat,
                    eta_sync,alpha_sync, gamma_init, phi = 0.3, n = dim(X)[3])
+
+hyper$K
+hyper$L
 # 
 # hyper <- hyperparameters(1, 5e-4, 10, 3, width_theta = 1, m = 6, nu = 4,
 #                          psi = psi,n = dim(X)[3], a = 0.01, b = 0.01, a_phi = a_phi, b_phi = b_phi, X = X)
@@ -310,7 +350,7 @@ init <- init_param(2,lambda_sync, theta_init,beta_init,
 
 tic()
 par(mfrow = c(1, 3))
-MCMC_samp <- RB_MCMC(total_iter = 15000, burnin = 5000, thinning  = 10, X = X, 
+MCMC_samp <- RB_MCMC(total_iter = 30000, burnin = 10000, thinning  = 10, X = X, 
                      init = init, hyper = hyper)
 toc()
 gcinfo(FALSE)
@@ -318,8 +358,14 @@ total_iter = 100000
 burnin = 30000
 thinning  = 20
 X <- sam$X
+thetas <- MCMC_samp$output$theta[1,]
+k_l <- length(thetas)
+mat <- matrix(NA, nrow = k_l, ncol = k_l)
+d <- covariance_mat(mat, thetas)
+sam$theta
 
-
+sum(d >= 1)/2
+18*18/2
 sample_posterior_predictive_identita <- function(output_mcmc, subject_idx) {
   
   n_saved_iter <- dim(output_mcmc$mean)[1]
@@ -327,7 +373,7 @@ sample_posterior_predictive_identita <- function(output_mcmc, subject_idx) {
   p <- 2                           # Dimensione spaziale (x, y)
   
   X_pred <- array(0, dim = c(k_l, p, n_saved_iter))
-  
+  mat_dist <- matrix(0, nrow = k_l, ncol = k_l)
   for (i in 1:n_saved_iter) {
     # 1. Recupera la media già calcolata del soggetto i a questa iterazione
     M_subject <- output_mcmc$mean_i[[i]][, , subject_idx]
@@ -346,13 +392,15 @@ sample_posterior_predictive_identita <- function(output_mcmc, subject_idx) {
     # \alpha_i^2 * t(R_lambda) %*% Sigma_e %*% R_lambda
     Sigma_spatial_i <- (alpha_i^2) * (t(R_lambda) %*% Sigma_e %*% R_lambda)
     L_Sigma_spatial <- t(chol(Sigma_spatial_i)) # Cholesky inferiore (2 x 2)
-    
+    mat_dist <- covariance_mat(mat_dist, output_mcmc$theta[i,])
+    C <- exp(-mat_dist/output_mcmc$phi[i])
     # 5. Campiona la matrice di rumore bianco standard Z (K x 2)
     Z <- matrix(rnorm(k_l * p), nrow = k_l, ncol = p)
     
     # 6. Trasforma il rumore solo a destra (poiché L_C è l'identità)
     # E_i = Z %*% t(L_Sigma_spatial)
-    E_i <- Z %*% t(L_Sigma_spatial)
+    
+    E_i <- chol(C) %*% Z %*% t(L_Sigma_spatial)
     
     # Configurazione finale predetta per l'iterazione i
     X_pred[, , i] <- M_subject + E_i
@@ -361,23 +409,64 @@ sample_posterior_predictive_identita <- function(output_mcmc, subject_idx) {
   return(X_pred)
 }
 
-
+MCMC_samp$output$t
 posterior_pred <- sample_posterior_predictive_identita(MCMC_samp$output, 1)
 
 dim(posterior_pred)
 length(MCMC_samp$output$mean_i[[1]])
+k_l = 18
+mat_dist_true <- matrix(0, nrow = k_l, ncol = k_l)
+mat_dist_true <- covariance_mat(mat_dist_true, sam$theta)
+n <- 100
+B_sim <- Basis_Construction(sam$theta, 10, degree) # build the basis with the current value of theta
+r <- exp(B_sim %*% as.vector(sam$betas))# compute the current value of the radius
+mu_mean_x <- r*cos(sam$theta)
+mu_mean_y <- r*sin(sam$theta)
+mean <- cbind(mu_mean_x, mu_mean_y) # average configuration 
+R <- array(0, dim = c(2, 2, n))
+mu_i_true <- array(0, dim = c(k_l, 2, n))
+Q_R <- R
+X <- sam$X
+X <- X_new
+for (i in 1:n) { # compute rotation matrix 
+  R[,,i] <- matrix(c(cos(sam$lambda[i]), -sin(sam$lambda[i]), 
+                                sin(sam$lambda[i]), cos(sam$lambda[i])), 
+                              byrow = T, nrow = 2, ncol = 2)
+  eta_matrix <- matrix(sam$eta[i,], nrow = length(sam$theta), ncol = 2, byrow = T)
+  mu_i_true[,,i] <- sam$alphas[i]*mean%*%R[,,i] + eta_matrix # compute the mean configuration for every unit
+  Q_R[,,i] <- (1/(sam$alphas[i]^2)) *t(R[,,i])%*%solve(sam$Sigma_e)%*%R[,,i] 
+
+}
+
+par(mfrow = c(1,1))
+phi_grid <- seq(0.01, 2, length.out = 1000)
+loglik_grid <- sapply(phi_grid, function(p) {
+  C_p <- exp(-mat_dist_true / p)
+  chol_p <- chol(C_p)
+  val <- 0
+  for (i in 1:n) {
+    res <- backsolve(chol_p, X[,,i] - mu_i_true[,,i], transpose = TRUE)
+    val <- val + sum(Q_R[,,i] * (t(res) %*% res))
+  }
+  -0.5*val - n*log(det(C_p)) -2*k_l*sum(log(sam$alphas)) -((n*k_l)/2)*log(det(sam$Sigma_e))
+})
+plot(phi_grid, loglik_grid, type = "l")
+abline(v = sam$phi, col = "red")
 
 
-save(MCMC_samp,X, file = "Fish_new.RData")
+
+
+save(MCMC_samp,X, file = "Fish_August.RData")
 load("Sim1.RData")
 
 par(mfrow = c(1, 1))
 plot((MCMC_samp$output$lambdas[,5] - MCMC_samp$output$lambdas[,1])%%(2*pi), type ="l")
 library(LaplacesDemon)
 ESS(MCMC_samp$output$lambdas[,2] - MCMC_samp$output$lambdas[,1])
-plot((MCMC_samp$output$theta[,9] - MCMC_samp$output$theta[,1]) %%(2*pi), type = "l")
-ESS((MCMC_samp$output$theta[,2] - MCMC_samp$output$theta[,1]) %%(2*pi))
+plot((MCMC_samp$output$theta[,1] - MCMC_samp$output$lambdas[,9]) %%(2*pi), type = "l")
+plot((MCMC_samp$output$theta[,1] - MCMC_samp$output$theta[,3]) %%(2*pi), type ="l")
 plot(MCMC_samp$output$phi, type = "l")
+ESS(MCMC_samp$output$phi)
 plot(density(MCMC_samp$output$phi))
 
 ESS(MCMC_samp$output$theta[,5] - MCMC_samp$output$theta[,2])
@@ -385,7 +474,10 @@ sam$theta[3] - sam$theta[1]
 ESS(MCMC_samp$output$alphas[,2]/MCMC_samp$output$alphas[,1])
 sam$lambda[2] - sam$lambda[1]
 sam$alphas[2]/sam$alphas[1]
-gg_mcmc_diagnostics(MCMC_samp$output$tau, param_name = "tau", real_values = NA)
+
+plot(MCMC_samp$output$betas[,2] - exp(MCMC_samp$output$alphas[,1]))
+
+gg_mcmc_diagnostics(MCMC_samp$output$tau[,2], param_name = "tau", real_values = NA)
 gg_mcmc_diagnostics(MCMC_samp$output$theta, param_name = "theta", real_values = NA, TRUE)
 gg_mcmc_diagnostics(MCMC_samp$output$lambda, param_name = "lambda", real_values = NA, TRUE)
 Sigma_samp <- cbind(MCMC_samp$output$Sigma[,1,1], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,2,2])
@@ -440,7 +532,8 @@ n = 120
 n_iter <- dim(MCMC_samp$output$mean)[1]
 #i = 1
 k_l <- dim(MCMC_samp$output$mean)[2]
-par(mfrow = c(1, 3))
+par(mfrow = c(1, 4))
+dev.off()
 for (i in 1:n) {
   
   X_i <- X[,,i]
@@ -508,15 +601,26 @@ for (i in 1:n) {
     )
     
   }
-  
-  # post_samp_i <- apply(posterior_pred, c(1,2), mean)
-  # low_post_i <- apply(posterior_pred, c(1,2), quantile, 0.025)
-  # high_post_i <- apply(posterior_pred, c(1,2), quantile, 0.975)
-  # plot(post_samp_i, asp = 1, pch = 21, bg = "black",
-  #      main = "Posterior Predictive")
-  # lines(c(post_samp_i[,1], post_samp_i[1,1]),
-  #       c(post_samp_i[,2], post_samp_i[1,2]),
-  #       col = "brown", lwd = 2)
+  posterior_pred <- sample_posterior_predictive_identita(MCMC_samp$output, i)
+  post_samp_i <- apply(posterior_pred, c(1,2), mean)
+  low_post_i <- apply(posterior_pred, c(1,2), quantile, 0.025)
+  high_post_i <- apply(posterior_pred, c(1,2), quantile, 0.975)
+  plot(post_samp_i, asp = 1, pch = 21, bg = "black",
+        main = "Posterior Predictive")
+  lines(c(post_samp_i[,1], post_samp_i[1,1]),
+         c(post_samp_i[,2], post_samp_i[1,2]),
+         col = "brown", lwd = 2)
+  for (k in 1:k_l) {
+    
+    polygon(
+      x = c(low_post_i[k,1], high_post_i[k,1],
+            high_post_i[k,1], low_post_i[k,1]),
+      y = c(low_post_i[k,2], low_post_i[k,2],
+            high_post_i[k,2], high_post_i[k,2]),
+      col = rgb(0,0,1,0.40),
+      border = NA
+    )
+  }
 }
 
 
@@ -822,6 +926,7 @@ for (i in 1:n) {
   #       c(post_samp_i[,2], post_samp_i[1,2]),
   #       col = "brown", lwd = 2)
 }
+output <- MCMC_samp$output
 nsamp <- dim(output$lambdas)[1]
 mean_orig <- array(NA, c(k, 2, nsamp))
 mean_noloc <- array(NA, c(k, 2, nsamp))

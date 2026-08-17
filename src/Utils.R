@@ -120,7 +120,7 @@ rmvnorm_rd <- function(n, mu, Precision, tol) {
 
 
 
-in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, tau = 0.1, 
+in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, tau = 0.1,phi = 0.3, 
                             beta_values = NA, lambda = NA, alphas = NA, eta = NA, 
                             Sigma_e = NA){
   # K_l --> lanmdarks number 
@@ -134,6 +134,9 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   }
   thetas[thetas < 0]  <- thetas[thetas < 0] + 2*pi # be aware of the domain [0, 2pi]
   thetas <- sort(thetas) # sort the angles
+  mat_dist <- diag(0, nrow = length(thetas), ncol = length(thetas)) 
+  mat_dist <- covariance_mat(mat_dist, thetas)
+  C <- exp(-mat_dist/phi) 
   
   # basis block -----
   n_basis     <- n_int_knots + degree # final number of basis
@@ -188,7 +191,7 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
     # to sample we use the fact that X \sim MN(mu_{i}, I_k, Sigma)
     Sigmas <- alphas[i]^2 *t(R[,,i])%*%Sigma_e%*%R[,,i]
     I <- diag(K_l)
-    X[,,i] <- chol(I)%*%matrix(rnorm(n = K_l * 2), nrow = K_l, ncol = 2)%*%chol(Sigmas) + mu_i[,,i]
+    X[,,i] <- t(chol(C))%*%matrix(rnorm(n = K_l * 2), nrow = K_l, ncol = 2)%*%chol(Sigmas) + mu_i[,,i]
     #X[,,i] <- chol(I)%*%matrix(rnorm(n = K_l * 2), nrow = K_l, ncol = 2)%*%t(chol(Sigma_e)) +  mu_i[,,i]
     }
   
@@ -211,6 +214,7 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   final_param$Sigma_e <- Sigma_e
   final_param$X <- X
   final_param$betas <- beta_values
+  final_param$phi <- phi
   
   return(final_param)
 
@@ -288,18 +292,18 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   hyper$degree <- degree
   J <- n_basis + degree # find the number of basis
   #J <- n_basis
-  K1 <- K1_construction(J) # construct K1
-  K2 <- K2_construction(J) #construct K2
-  hyper$K <- (K1 + K2)
+  
+  # tau1 and tau2 block
+  hyper$K1 <- K1_construction(J) # construct K1
+  hyper$K2 <- K2_construction(J) #construct K2
+  hyper$K <- (hyper$K1 + hyper$K2)
   hyper$L <- qr(hyper$K)$rank
   eig <- eigen(hyper$K, symmetric = TRUE)
   ord <- order(eig$values, decreasing = TRUE)
   eig_vals <- eig$values[ord]
   eig_vecs <- eig$vectors[, ord, drop = FALSE]
-  
-  
   keep <- eig_vals > tol
-  hyper$L <- sum(keep) # approximation for the normal distribution ---> non null eigenvalues
+  #hyper$L <- sum(keep) # approximation for the normal distribution ---> non null eigenvalues
   hyper$Eigen_matrix <- diag(1/sqrt(eig_vals[keep]), nrow = hyper$L) # using for sample from the prior
   hyper$Eigen_vector <- eig_vecs[, keep, drop = FALSE] # Eigen vectors with non null eigen values
   hyper$Eigen_vector_null <- t(eig_vecs[, !keep, drop = FALSE]) # eigen vectors eith null eigen values
@@ -310,9 +314,17 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   union_matrix <- rbind(hyper$A, hyper$A_bar)
   inv_union_matrix <- solve(union_matrix)
   hyper$C_bar <- inv_union_matrix[, (nrow(hyper$A)+1):J ]
+  hyper$L <- ncol(hyper$C_bar)
   #hyper$C_bar <- hyper$Eigen_vector %*% hyper$Eigen_matrix # \beta = C_bar \gamma
   #hyper$A_bar <- diag(sqrt(eig_vals[keep]), nrow = hyper$L) %*% t(hyper$Eigen_vector) # \gamma = A_bar \beta
   hyper$U_lambda <- t(chol(t(hyper$C_bar) %*% hyper$K %*% hyper$C_bar))
+  hyper$K_gamma1 <- t(hyper$C_bar) %*% hyper$K1 %*% hyper$C_bar
+  hyper$K_gamma2 <- t(hyper$C_bar) %*% hyper$K2 %*% hyper$C_bar
+  hyper$lambda_tau <- (2.38^2)/2
+  hyper$mu_tau <- matrix(0, nrow = 2)
+  hyper$Sigma_tau <- diag(1e-4, nrow = 2)
+  hyper$a_opts <- 0.234
+  hyper$tau_acc <- 0
   
   # Theta block -----
   hyper$width_theta <- width_theta
@@ -329,18 +341,6 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   hyper$psi_post <- psi
   
   # Alphas block -----
-  # hyper$lambda_a <- (2.38^2)/n
-  # hyper$mu_a <- matrix(0, nrow = n)
-  # hyper$Sigma_a <- diag(0.01, nrow = n, ncol = n)
-  # hyper$L_a <- chol(hyper$lambda_a*hyper$Sigma_a)
-  # hyper$gamma_a <- 1
-  # hyper$a_opt <- 0.234
-  # hyper$a_aver_a <- 0
-  # hyper$t <- 0
-  # hyper$a <- a
-  # hyper$b <- b
-  # hyper$log_lik_a <- 0
-  
   hyper$lambda_a <- matrix(2.38^2, nrow = n)
   hyper$mu_a <- matrix(0, nrow = n)
   hyper$Sigma_a <- matrix(1e-4, nrow = n)
@@ -397,7 +397,7 @@ g_phi_star <- function(phi, a_phi, b_phi){
 }
 create_output <- function(mcmc_iter, k_l, n, L){
   output <- list()
-  output$tau <- numeric(mcmc_iter)
+  output$tau <- matrix(NA, nrow = mcmc_iter, ncol = 2)
   output$theta <- matrix(NA, nrow = mcmc_iter, ncol = k_l)
   output$lambdas <- matrix(NA, nrow = mcmc_iter, ncol = n)
   output$Sigma <- array(NA, dim = c(mcmc_iter, 2, 2))
@@ -407,7 +407,7 @@ create_output <- function(mcmc_iter, k_l, n, L){
   output$eta <- array(NA, c(mcmc_iter, n, 2))
   output$mean_i <- list()
   output$mean <- array(NA, c(mcmc_iter, k_l, 2))
-  output$phi <- matrix(NA, nrow = mcmc_iter, ncol = 1)
+  output$phi <- matrix(NA, nrow = mcmc_iter, ncol =1)
   return(output)
 }
 

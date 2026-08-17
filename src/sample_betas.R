@@ -30,7 +30,8 @@ eval_log_lik_beta <- function(gamma_cand, init, hyper, X, k_l){
 
 sample_beta <- function(init, hyper, X, k_l){
   #gamma_samp <- rnorm(hyper$L)
-  gamma_samp <- sqrt(init$tau) * solve(t(hyper$U_lambda), rnorm(hyper$L - 1))
+  #gamma_samp <- sqrt(init$tau) * solve(t(hyper$U_lambda), rnorm(hyper$L))
+  gamma_samp <- solve(t(hyper$U_lambda), rnorm(hyper$L))
   #gamma_samp <- sqrt(init$tau)*rnorm(hyper$L)
   u <- runif(n = 1)
   thresh <- hyper$log_lik + log(u)
