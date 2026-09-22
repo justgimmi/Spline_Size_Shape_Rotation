@@ -8,8 +8,9 @@ eval_log_lik_alpha <- function(alpha_candidate, hyper, init, k_l, X, i) {
   n <- init$n
   R_i <- init$R[,,i]
   eta_matrix <- matrix(init$eta[i,], nrow = k_l, ncol = 2, byrow = TRUE)
-  mean_i <- alphas_curr * (init$mean %*% R_i) + eta_matrix
-  
+  mean_i <- alphas_curr * (init$mean + hyper$S_mat%*%init$W) %*% R_i + eta_matrix
+  #mean_i <- alphas_curr * (init$mean + project_warp(hyper$S_mat, init$W, init$thetas)) %*% R_i + eta_matrix
+  #project_warp(S_mat_cand, W_cand, init$thetas)
   residual_part <- backsolve(init$chol_c, X[,,i] - mean_i, transpose = TRUE)
   residual_cand <- t(residual_part)%*%residual_part
   Q_R <- (1 / (alphas_curr^2)) * t(R_i) %*% init$Sigma_inv %*% R_i

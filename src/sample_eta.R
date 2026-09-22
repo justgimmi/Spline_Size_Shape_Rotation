@@ -12,3 +12,5 @@ sample_eta <- function(init, hyper, index, X){
   init$residual[,,index] <- t(X[,,index] - init$mean_i[,,index])%*%(X[,,index] - init$mean_i[,,index])
 }
 
+
+

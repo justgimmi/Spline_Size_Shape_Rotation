@@ -10,7 +10,7 @@
 sample_tau <- function(init, hyper, burn){
   log_tau_proposal <- log(init$tau) + t(chol(hyper$lambda_tau* hyper$Sigma_tau))%*%rnorm(n = 2)
   tau_proposal <- exp(log_tau_proposal)
-  log_tau_curr <- log(init$tau)
+  log_tau_curr <- as.vector(log(init$tau))
   tau_curr <- init$tau
   
   Sigma_gamma_proposal <- (1/tau_proposal[1])*hyper$K_gamma1 + 

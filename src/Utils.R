@@ -29,45 +29,6 @@ Basis_Construction <- function(thetas, L, degree = 3){
   return(Basis)
 }
 # 
-# Basis_Construction <- function(thetas, L, degree = 3){
-#   # thetas: vettore dei landmark angles in (0, 2*pi)
-#   # L: numero di nodi equispaziati nell'intervallo circolare
-#   # degree: grado della spline (3 = cubica)
-#   
-#   # 1. Definiamo i nodi base equispaziati su [0, 2*pi]
-#   delta <- (2 * pi) / L
-#   knots_base <- seq(0, 2 * pi, length.out = L + 1) # include 0 e 2*pi esattamente una volta
-#   
-#   # 2. Per le spline periodiche, estendiamo i nodi all'esterno "avvolgendo" il cerchio
-#   # Nodi a sinistra: prendiamo gli ultimi nodi prima di 2*pi e li trasliamo a sinistra di 2*pi
-#   left_knots <- knots_base[(L + 1 - degree):L] - 2 * pi
-#   # Nodi a destra: prendiamo i primi nodi dopo lo 0 e li trasliamo a destra di 2*pi
-#   right_knots <- knots_base[2:(degree + 1)] + 2 * pi
-#   
-#   # Uniamo i nodi in una griglia perfettamente equispaziata e coerente
-#   total_knots <- c(left_knots, knots_base, right_knots)
-#   
-#   # 3. Generiamo la base standard sulla griglia estesa
-#   # splineDesign richiede l'ordine (degree + 1)
-#   ord <- degree + 1
-#   Basis_raw <- splineDesign(knots = total_knots, x = thetas, ord = ord, outer.ok = TRUE)
-#   
-#   # 4. TRICK DELLA PERIODICITÀ: Uniamo le colonne corrispondenti ai nodi che si sovrappongono
-#   # Le ultime 'degree' colonne si sovrappongono esattamente alle prime 'degree' colonne del cerchio
-#   n_col_raw <- ncol(Basis_raw)
-#   
-#   Basis_periodic <- Basis_raw[, 1:(n_col_raw - degree), drop = FALSE]
-#   
-#   # Sommiamo l'effetto ciclico delle ultime colonne sulle prime
-#   for(k in 1:degree){
-#     Basis_periodic[, k] <- Basis_periodic[, k] + Basis_raw[, n_col_raw - degree + k]
-#   }
-#   
-#   # Ora la matrice ha dimensione esattamente: length(thetas) x L
-#   return(Basis_periodic)
-# }
-
-# L = 10
 
 # Useful function for K1 and K2 -----
 K1_construction <- function(J){ # smoothness constraint
@@ -120,7 +81,7 @@ rmvnorm_rd <- function(n, mu, Precision, tol) {
 
 
 
-in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, tau = 0.1,phi = 0.3, 
+in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, tau = c(0.1, 0.1),phi = 0.3, sigma_2 = 0.01,
                             beta_values = NA, lambda = NA, alphas = NA, eta = NA, 
                             Sigma_e = NA){
   # K_l --> lanmdarks number 
@@ -144,17 +105,60 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   K1 <- K1_construction(n_basis) # smoothness
   K2 <- K2_construction(n_basis) # symmetry 
   K <- K1 + K2
-  P <- (1/(tau^2))*K # Precision Matrix
-  if (length(beta_values) == 1 ) { # the user can supply the values of beta
-    beta_values <- rmvnorm_rd(n = 1, mu = rep(0, n_basis), P, tol = 1e-7)
-    
-  }
+  P <- (1/(tau[1]))*K1 + (1/(tau[2]))*K2  # Precision Matrix
+  tol <- 1e-6
+  L <- qr(K)$rank
+  eig <- eigen(K, symmetric = TRUE)
+  ord <- order(eig$values, decreasing = TRUE)
+  eig_vals <- eig$values[ord]
+  eig_vecs <- eig$vectors[, ord, drop = FALSE]
+  keep <- eig_vals > tol
+  #hyper$L <- sum(keep) # approximation for the normal distribution ---> non null eigenvalues
+  Eigen_matrix <- diag(1/sqrt(eig_vals[keep]), nrow = L) # using for sample from the prior
+  Eigen_vector <- eig_vecs[, keep, drop = FALSE] # Eigen vectors with non null eigen values
+  Eigen_vector_null <- t(eig_vecs[, !keep, drop = FALSE]) # eigen vectors eith null eigen values
+  R <- Basis_Construction(0, n_int_knots, degree) - Basis_Construction(2*pi, n_int_knots, degree)
+  A <- rbind(Eigen_vector_null, R)
+  aux_eig <- eigen(t(A) %*% A)
+  A_bar <- t(aux_eig$vectors[,aux_eig$values < tol])
+  union_matrix <- rbind(A, A_bar)
+  inv_union_matrix <- solve(union_matrix)
+  C_bar <- inv_union_matrix[, (nrow(A)+1):n_basis ]
+  K_gamma1 <- t(C_bar) %*% K1 %*% C_bar
+  K_gamma2 <- t(C_bar) %*% K2 %*% C_bar
+  L <- ncol(C_bar)
+  Sigma_gamma_inv <-  (1/tau[1])*K_gamma1 + 
+    (1/tau[2])*K_gamma2
+  U_lambda <- t(chol(Sigma_gamma_inv))
+  gamma_samp <- solve(t(U_lambda), rnorm(L))
+  beta_values <- C_bar %*%  gamma_samp
   
-  # Mean block ----
+  
+  # if (length(beta_values) == 1 ) { # the user can supply the values of beta
+  #   beta_values <- rmvnorm_rd(n = 1, mu = rep(0, n_basis), P, tol = 1e-7)
+  #   
+  # }
+   # Mean block ----
   r <- exp(B_sim %*% as.vector(beta_values)) # radius
   mu_mean_x <- r*cos(thetas)
   mu_mean_y <- r*sin(thetas)
   mu_mean <- cbind(mu_mean_x, mu_mean_y) # mean configuration 
+  k_free <- K_l - 3
+  S_mat <- matrix(0, nrow = K_l, ncol = K_l)
+  S_mat <- S_mat_constructor(S_mat, mu_mean)
+  D_p <- D_p_raw(mu_mean)
+  if (sigma_2 == 0) {
+    Precision <- diag(1, nrow = k_free)
+  }
+  else{
+    Precision <- (1 / sigma_2) * t(D_p) %*% S_mat %*% D_p
+  }
+  U_prec <- chol(Precision)
+  k_free <- ncol(D_p)  # k - 3
+
+  Z <- matrix(rnorm(k_free * 2), nrow = k_free, ncol = 2)
+  psi <- backsolve(U_prec, Z)
+  W <- D_p %*% psi
   R <- array(NA, dim = c(2, 2, n))
   mu_i <- array(NA, dim = c(K_l, 2, n))
   if (length(lambda) == 1) {
@@ -175,7 +179,7 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
     R[,,i] <- matrix(c(cos(lambda[i]), -sin(lambda[i]), sin(lambda[i]), cos(lambda[i])), 
                      byrow = T, nrow = 2, ncol = 2)
     eta_matrix <- matrix(eta[i,], nrow = K_l, ncol = 2, byrow = T)
-    mu_i[,,i] <- alphas[i]*mu_mean%*%R[,,i] + eta_matrix # compute the mean configuration for every unit
+    mu_i[,,i] <- alphas[i]*(mu_mean + S_mat %*% W) %*%R[,,i] + eta_matrix # compute the mean configuration for every unit
   }
   
   s_x2 <- 9 * 1e-4
@@ -215,6 +219,10 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   final_param$X <- X
   final_param$betas <- beta_values
   final_param$phi <- phi
+  final_param$psi <- psi
+  final_param$S_mat <- S_mat
+  final_param$W <- W
+  final_param$D_p <- D_p
   
   return(final_param)
 
@@ -224,6 +232,66 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
 # MCMC Util functions ----
 Rmat <- function(angle) {
   matrix(c(cos(angle), -sin(angle), sin(angle), cos(angle)), nrow = 2, ncol = 2)
+}
+
+
+S_mat_constructor <- function(mat, mu){
+  # mat: K \times K conditional positive definite matrix
+  # mu: value of the latent mean K \times K
+  k_l <- nrow(mu) # number of landmarks
+  for (i in 1:k_l) {
+    for (j in 1:k_l) {
+      normm <- sum((mu[i, ] - mu[j, ])^2)   # = r^2
+      mat[i, j] <- ifelse(normm > 0, normm * log(sqrt(normm)), 0)  # r^2 log(r)
+    }
+  }
+  return(mat/(8*pi))
+}
+
+# 
+# D_p_constructor <- function(mu){
+#   k_l <- nrow(mu)
+#   ones <- matrix(1, nrow = 1, ncol = k_l)
+#   B <- rbind(ones, t(mu))
+#   mat <- t(B) %*% B
+#   eigs <- eigen(mat, symmetric = TRUE)
+#   # take the k_l - 3 smallest eigenvalues, by rank, not by absolute threshold
+#   ord <- order(eigs$values)                # ascending
+#   eg_vec <- eigs$vectors[, ord[1:(k_l - 3)], drop = FALSE]
+#   return(eg_vec)
+# }
+
+# D_p_raw <- function(mu) {
+#   k_l <- nrow(mu)
+#   ones <- matrix(1, nrow = 1, ncol = k_l)
+#   B <- rbind(ones, t(mu))
+#   
+#   mat <- t(B) %*% B
+#   eigs <- eigen(mat, symmetric = TRUE)
+#   eg_vec <- eigs$vectors[,eigs$values< 1e-10, drop = FALSE] 
+#   
+#   matts <- rbind(B , t(eg_vec))
+#   inv <- solve(matts)
+#   inv
+#   
+#   C_bar_w <- inv[, (nrow(B) + 1):k_l]
+#   return(C_bar_w)
+#   
+# }
+D_p_raw <- function(mu) {
+  k_l <- nrow(mu)
+  B <- rbind(matrix(1, 1, k_l), t(mu))   # 3 x k
+  sv <- svd(B, nu = 0, nv = k_l)
+  sv$v[, (nrow(B) + 1):k_l, drop = FALSE]  # last k_l - 3 right singular vectors
+}
+
+D_p_constructor <- function(mu, D_p_prev = NULL) {
+  D_raw <- D_p_raw(mu)
+  if (is.null(D_p_prev)) return(D_raw)
+  M  <- crossprod(D_p_prev, D_raw)      # (k-3) x (k-3)
+  sm <- svd(M)
+  Rot <- sm$v %*% t(sm$u)               # orthogonal Procrustes solution
+  D_raw %*% Rot
 }
 
 covariance_mat <- function(mat, thetas){
@@ -272,6 +340,11 @@ init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, gammas, 
   param$chol_c <- chol((param$C)) # cholesky decompoition of the covariance matrix -->
   # R is dumb so it is upper-triangular
   param$phi <- phi
+  
+  #param$psi <- matrix(rnorm(2*length(thetas)), nrow = length(thetas), ncol = 2)
+  param$sigma_2 <- 1e-10
+  param$z <- 0
+  param$chi <- 0.2
   return(param)
   
 }
@@ -358,7 +431,7 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   # Eta block ----
   hyper$Sigma_eta_inv <- solve(Sigma_eta)
   hyper$mu_eta <- matrix(0, nrow = n, ncol = 2)
-  hyper$Sigma_eta_new <- hyper$Sigma_eta
+  hyper$Sigma_eta_new <- Sigma_eta
   hyper$mu_new <- matrix(0, nrow = n, ncol = 2)
   
   hyper$lambda_lambda <- matrix(2.38^2, nrow = n)
@@ -379,6 +452,24 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   hyper$a_phi <- a_phi
   hyper$b_phi <- b_phi
   hyper$phi_acc <- 0
+  
+  
+  hyper$S_mat <- matrix(0, nrow = k_l, ncol = k_l)
+  hyper$a_sigma <- 1e-8
+  hyper$lambda_sigma_cp <- 2.38^2
+  hyper$Sigma_sigma_cp  <- 1e-8
+  hyper$mu_sigma_cp     <- 0
+  hyper$sigma_acc_cp    <- 0
+  
+  hyper$lambda_sigma_ncp <- 2.38^2
+  hyper$Sigma_sigma_ncp  <- 1e-8
+  hyper$mu_sigma_ncp     <- 0
+  hyper$sigma_acc_ncp    <- 0
+  
+  
+  hyper$a_chi <- 2
+  hyper$b_chi <- 40
+  
   return(hyper)
 }
 
@@ -387,6 +478,13 @@ g_phi <- function(phi_star, a_phi, b_phi){
   phi <- (exp(phi_star)/(1 + exp(phi_star)))*(b_phi - a_phi) + a_phi
   return(phi)
   
+}
+
+project_warp <- function(S_mat, W, thetas) {
+  #t_mat <- cbind(-sin(thetas), cos(thetas))
+  S_mat %*% W
+  #s <- rowSums(Delta * t_mat)
+  #s * t_mat   # k x 2, row h = s_h * t_h
 }
 
 g_phi_star <- function(phi, a_phi, b_phi){
@@ -408,10 +506,12 @@ create_output <- function(mcmc_iter, k_l, n, L){
   output$mean_i <- list()
   output$mean <- array(NA, c(mcmc_iter, k_l, 2))
   output$phi <- matrix(NA, nrow = mcmc_iter, ncol =1)
+  output$psi <- array(NA, dim = c(mcmc_iter, k_l - 3, 2))
+  output$sigma_2 <- matrix(NA, nrow = mcmc_iter, ncol = 1)
   return(output)
 }
 
-mean_constructor <- function(n_basis, degree, init_param, X){
+mean_constructor <- function(n_basis, degree, init_param, hyper, X){
   # n_basis --> number of internal knots
   # degree --> degree of the polynomial
   
@@ -420,20 +520,37 @@ mean_constructor <- function(n_basis, degree, init_param, X){
   init_param$r <- exp(B_sim %*% as.vector(init_param$betas))# compute the current value of the radius
   mu_mean_x <- init_param$r*cos(init_param$thetas)
   mu_mean_y <- init_param$r*sin(init_param$thetas)
-  init_param$mean <- cbind(mu_mean_x, mu_mean_y) # average configuration 
+  mean <- cbind(mu_mean_x, mu_mean_y)
+  init_param$mean <- cbind(mean) # average configuration 
+  hyper$S_mat <- S_mat_constructor(hyper$S_mat, mean)
+  hyper$D_p <- D_p_constructor(mean)
+  # Precision <- (1 / init_param$sigma_2) * t(hyper$D_p) %*% hyper$S_mat %*% hyper$D_p
+  # U_prec <- chol(Precision)
+  k_free <- ncol(hyper$D_p)  # k - 3
+  # Z <- matrix(rnorm(k_free * 2), nrow = k_free, ncol = 2)
+  
+  init_param$psi <- matrix(0, nrow = k_free, ncol = 2 )
+  
+  init_param$W <- hyper$D_p %*% init_param$psi
   
   for (i in 1:n) { # compute rotation matrix 
     init_param$R[,,i] <- matrix(c(cos(init_param$lambdas[i]), -sin(init_param$lambdas[i]), 
                                   sin(init_param$lambdas[i]), cos(init_param$lambdas[i])), 
                                 byrow = T, nrow = 2, ncol = 2)
     eta_matrix <- matrix(init_param$eta[i,], nrow = length(init_param$thetas), ncol = 2, byrow = T)
-    init_param$mean_i[,,i] <- init_param$alphas[i]*init_param$mean%*%init_param$R[,,i] + eta_matrix # compute the mean configuration for every unit
+    init_param$mean_i[,,i] <- init_param$alphas[i]*(init_param$mean + hyper$S_mat%*%init_param$W)%*%init_param$R[,,i] + eta_matrix # compute the mean configuration for every unit
+    #init_param$mean_i[,,i] <- init_param$alphas[i]*(init_param$mean + project_warp(hyper$S_mat, init_param$W, init_param$thetas))%*%init_param$R[,,i] +
+    #  eta_matrix # compute the mean configuration for every unit
+    
     init_param$Q_R[,,i] <- (1/(init_param$alphas[i]^2)) *t(init_param$R[,,i])%*%init_param$Sigma_inv%*%init_param$R[,,i] 
     
     res <- backsolve(init_param$chol_c,X[,,i] - init_param$mean_i[,,i],  transpose = TRUE)
     #init_param$residual[,,i] <- t(X[,,i] - init_param$mean_i[,,i])%*%init_param$C %*% (X[,,i] - init_param$mean_i[,,i])
     init_param$residual[,,i] <- t(res)%*%res
   }
+  
+  hyper$traces <- -0.5 * 1/((init_param$sigma_2)) * tr(t(init_param$W) %*% hyper$S_mat %*% init_param$W) + 
+    as.numeric(determinant(t(hyper$D_p) %*% hyper$S_mat %*% hyper$D_p, logarithm = TRUE)$modulus)
   # return(init_param)
 }
 
