@@ -25,7 +25,7 @@ eval_log_lik_theta_joint <- function(theta_cand, init, hyper, X) {
   
   
   S_mat_cand <- S_mat_constructor(hyper$S_mat, mean_cand)
-  D_p_cand <- D_p_constructor(mean_cand, D_p_prev = hyper$D_p)
+  D_p_cand <- D_p_constructor(mean_cand, theta_cand, init$betas, r_cand, hyper$n_basis, hyper$degree, D_p_prev = hyper$D_ref)
   #D_p_cand <- hyper$D_p
   #W_cand <- init$W
   W_cand <- D_p_cand %*%init$psi
@@ -43,13 +43,24 @@ eval_log_lik_theta_joint <- function(theta_cand, init, hyper, X) {
   }
   
   val_2 <- -2 * k_l * sum(log(init$alphas)) - ((n * k_l) / 2) * log(det(init$Sigma)) - n*log(det(C_cand))
-  val_3 <- -0.5 * 1/((init$sigma_2)) * tr(t(W_cand) %*% S_mat_cand %*% W_cand) +
-    as.numeric(determinant(t(D_p_cand) %*% S_mat_cand %*% D_p_cand, logarithm = TRUE)$modulus)
+  K <- t(D_p_cand) %*% S_mat_cand%*% D_p_cand
+  Kinv <- chol2inv(chol(K))
+  w <- 1 / diag(Kinv)
+  w_mat <- diag(w, ncol = length(w), nrow = length(w))
+  V <-  mean(diag(S_mat_cand %*% D_p_cand %*% solve(K) %*% t(D_p_cand) %*% t(S_mat_cand)))
+  lp_sig <- -log(V) - log(1 + (init$sigma_2/(V*hyper$a_sigma))^2)
+  logdetK <- as.numeric(determinant(K/init$sigma_2, logarithm = TRUE)$modulus)
+  
   if (init$z  == 1) {
+    k_free <- ncol(hyper$D_p)
+    val_3 <- -0.5 * (1/init$sigma_2) * tr(t(W_cand) %*% S_mat_cand %*% W_cand) +
+      logdetK  + lp_sig
     log_lik_total <- -0.5 * val + val_2 + val_3
   }
   else{
-    log_lik_total <- -0.5 * val + val_2 
+    k_free <- ncol(hyper$D_p)
+    val_3 <- -0.5 * (1/init$sigma_2) * tr(t(init$psi) %*% w_mat %*%  init$psi) + sum(log(w)) - k_free*log(init$sigma_2) + lp_sig
+    log_lik_total <- -0.5 * val + val_2 + val_3
   }
   
   return(list(log_lik = log_lik_total, 
@@ -63,7 +74,8 @@ eval_log_lik_theta_joint <- function(theta_cand, init, hyper, X) {
               S_mat = S_mat_cand,
               W = W_cand,
               D_p = D_p_cand,
-              val_3 = val_3))
+              val_3 = val_3,
+              r = r_cand))
 }
 
 
@@ -74,7 +86,7 @@ sample_theta_logit_normal <- function(init, hyper, X){
   omega_samp <- c(rnorm(k_l), 0)
   u <- runif(n = 1)
   if (init$z == 0) {
-    thresh <- hyper$log_lik + log(u)
+    thresh <- hyper$log_lik + hyper$traces + log(u)
   }
   else {
     thresh <- hyper$log_lik + hyper$traces + log(u)
@@ -108,7 +120,7 @@ sample_theta_logit_normal <- function(init, hyper, X){
     hyper$log_lik <- res_cand$log_lik - res_cand$val_3 
   }
   else{
-    hyper$log_lik <- res_cand$log_lik
+    hyper$log_lik <- res_cand$log_lik - res_cand$val_3
   }
   #hyper$log_lik <- res_cand$log_lik - res_cand$val_3
   init$omega_theta <- omega_cand 
@@ -131,6 +143,7 @@ sample_theta_logit_normal <- function(init, hyper, X){
   hyper$S_mat <- res_cand$S_mat
   hyper$D_p <- res_cand$D_p
   init$W <- res_cand$W
+  init$r <- res_cand$r
   hyper$traces <- res_cand$val_3
 
 }

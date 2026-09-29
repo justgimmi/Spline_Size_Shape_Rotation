@@ -3,7 +3,7 @@ source(file = file.path(getwd(), "src/Packages.R"))
 # Basis Construction ------
 # Here we define a function to define the cubic B-splines 
 
-Basis_Construction <- function(thetas, L, degree = 3){
+Basis_Construction <- function(thetas, L, degree = 3, derivatives = FALSE){
   # I do not like to use already implemented function because they are based
   # on the range of the vector to define the knots so every iteration of the MCMC
   # we could have different basis following this approach
@@ -13,7 +13,7 @@ Basis_Construction <- function(thetas, L, degree = 3){
   # degree: --> spline degree
 
   # The idea of this function is the following. Given the fact that I want the starting value in 0
-  # and the end point in 2 \pi, I first define equispaced knots on this interval. Then, we habe to
+  # and the end point in 2 \pi, I first define equispaced knots on this interval. Then, we have to
   # add padding on the left and on the right. A conservative choice would be to add degree times 0 before
   # and degree times 2\pi after. Talking with Johannes, I understood that the best approach to have
   # meaningfull penalties is to have equispaced knots also on the left and right part of the interval
@@ -25,6 +25,17 @@ Basis_Construction <- function(thetas, L, degree = 3){
                                                                          by = delta))
   Basis <- splineDesign(total_knots, thetas, ord = degree + 1, outer.ok = FALSE,
                         derivs = F) # Basis construction
+  
+  if (derivatives == FALSE) {
+    Basis <- splineDesign(total_knots, thetas, ord = degree + 1, outer.ok = FALSE,
+                          derivs = F) # Basis construction
+  }
+  
+  else{
+    Basis <- splineDesign(total_knots, thetas, ord = degree + 1, outer.ok = FALSE,
+                          derivs = derivatives) # Basis construction
+    
+  }
   # At the End we obtain a matrix of size length(theta) x (L + degree)
   return(Basis)
 }
@@ -83,7 +94,7 @@ rmvnorm_rd <- function(n, mu, Precision, tol) {
 
 in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, tau = c(0.1, 0.1),phi = 0.3, sigma_2 = 0.01,
                             beta_values = NA, lambda = NA, alphas = NA, eta = NA, 
-                            Sigma_e = NA){
+                            Sigma_e = NA, indep_error = TRUE){
   # K_l --> lanmdarks number 
   # thetas --> vector of angles
   # n_int_knots --> number of internal_knots
@@ -117,7 +128,10 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   Eigen_matrix <- diag(1/sqrt(eig_vals[keep]), nrow = L) # using for sample from the prior
   Eigen_vector <- eig_vecs[, keep, drop = FALSE] # Eigen vectors with non null eigen values
   Eigen_vector_null <- t(eig_vecs[, !keep, drop = FALSE]) # eigen vectors eith null eigen values
-  R <- Basis_Construction(0, n_int_knots, degree) - Basis_Construction(2*pi, n_int_knots, degree)
+  R <- Basis_Construction(0, n_int_knots, degree) - Basis_Construction(2*pi, n_int_knots, degree) # (B(0) - B(2pi))
+  #R1 <- Basis_Construction(0, n_int_knots, degree, derivatives = 1) - Basis_Construction(2*pi, n_int_knots, degree, derivatives = 1) # (B'(0) - B'(2pi))
+  #R2 <- Basis_Construction(0, n_int_knots, degree, derivatives = 2) - Basis_Construction(2*pi, n_int_knots, degree, derivatives = 2)
+  #A <- rbind(Eigen_vector_null, R, R1, R2)
   A <- rbind(Eigen_vector_null, R)
   aux_eig <- eigen(t(A) %*% A)
   A_bar <- t(aux_eig$vectors[,aux_eig$values < tol])
@@ -143,22 +157,52 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   mu_mean_x <- r*cos(thetas)
   mu_mean_y <- r*sin(thetas)
   mu_mean <- cbind(mu_mean_x, mu_mean_y) # mean configuration 
-  k_free <- K_l - 3
+  k_free <- K_l - 5
   S_mat <- matrix(0, nrow = K_l, ncol = K_l)
   S_mat <- S_mat_constructor(S_mat, mu_mean)
-  D_p <- D_p_raw(mu_mean)
-  if (sigma_2 == 0) {
+  # init <- list()
+  # hyper <- list()
+  # init$mean <- mu_mean
+  # init$betas <- beta_values
+  # init$r <- r
+  # init$thetas <- thetas
+  # hyper$n_basis <- n_int_knots
+  # hyper$degree <- degree
+  
+  
+  D_p <- D_p_raw(mu_mean, thetas, beta_values, r, n_int_knots, degree)
+  if (sigma_2 == 0 && indep_error == TRUE) {
     Precision <- diag(1, nrow = k_free)
+    U_prec <- chol(Precision)
+    k_free <- ncol(D_p)  # k - 5
+    psi <- matrix(0, nrow = k_free, ncol = 2)
+    W <- D_p %*% psi
+  }
+  
+  else if(sigma_2 != 0 && indep_error == TRUE){
+    Precision <- diag(1/sigma_2, nrow = k_free)
+    U_prec <- chol(Precision)
+    k_free <- ncol(D_p)  # k - 5
+    
+    Z <- matrix(rnorm(k_free * 2), nrow = k_free, ncol = 2)
+    psi <- backsolve(U_prec, Z)
+    W <- D_p %*% psi
   }
   else{
     Precision <- (1 / sigma_2) * t(D_p) %*% S_mat %*% D_p
+    U_prec <- chol(Precision)
+    k_free <- ncol(D_p)  # k - 3
+    
+    Z <- matrix(rnorm(k_free * 2), nrow = k_free, ncol = 2)
+    psi <- backsolve(U_prec, Z)
+    W <- D_p %*% psi
   }
   U_prec <- chol(Precision)
   k_free <- ncol(D_p)  # k - 3
 
-  Z <- matrix(rnorm(k_free * 2), nrow = k_free, ncol = 2)
-  psi <- backsolve(U_prec, Z)
-  W <- D_p %*% psi
+  # Z <- matrix(rnorm(k_free * 2), nrow = k_free, ncol = 2)
+  # psi <- backsolve(U_prec, Z)
+  # W <- D_p %*% psi
   R <- array(NA, dim = c(2, 2, n))
   mu_i <- array(NA, dim = c(K_l, 2, n))
   if (length(lambda) == 1) {
@@ -245,7 +289,7 @@ S_mat_constructor <- function(mat, mu){
       mat[i, j] <- ifelse(normm > 0, normm * log(sqrt(normm)), 0)  # r^2 log(r)
     }
   }
-  return(mat/(8*pi))
+  return(mat)
 }
 
 # 
@@ -278,22 +322,24 @@ S_mat_constructor <- function(mat, mu){
 #   return(C_bar_w)
 #   
 # }
-D_p_raw <- function(mu) {
+D_p_raw <- function(mu, thetas, betas, r, n_basis, degree) {
   k_l <- nrow(mu)
-  B <- rbind(matrix(1, 1, k_l), t(mu))   # 3 x k
+  B_deriv <- Basis_Construction(thetas, n_basis, degree, derivatives = 1)
+  deriv_x <- r * as.numeric(B_deriv %*% betas) * cos(thetas) - mu[,2]
+  deriv_y <- r * as.numeric(B_deriv %*% betas) * sin(thetas) + mu[,1]
+  B <- rbind(matrix(1, 1, k_l), t(mu), t(deriv_x), t(deriv_y))
   sv <- svd(B, nu = 0, nv = k_l)
-  sv$v[, (nrow(B) + 1):k_l, drop = FALSE]  # last k_l - 3 right singular vectors
+  sv$v[, (nrow(B) + 1):k_l, drop = FALSE]
 }
 
-D_p_constructor <- function(mu, D_p_prev = NULL) {
-  D_raw <- D_p_raw(mu)
-  if (is.null(D_p_prev)) return(D_raw)
-  M  <- crossprod(D_p_prev, D_raw)      # (k-3) x (k-3)
-  sm <- svd(M)
-  Rot <- sm$v %*% t(sm$u)               # orthogonal Procrustes solution
-  D_raw %*% Rot
+D_p_constructor <- function(mu, thetas, betas, r, n_basis, degree, D_p_prev = NULL) {
+  D_raw <- D_p_raw(mu, thetas, betas, r, n_basis, degree)
+  # if (is.null(D_p_prev)) return(D_raw)
+  # M  <- crossprod(D_p_prev, D_raw)
+  # sm <- svd(M)
+  # Rot <- sm$v %*% t(sm$u)
+  # D_raw %*% Rot
 }
-
 covariance_mat <- function(mat, thetas){
   # thetas: vector of angles
   # mat: K x K covariance matrix
@@ -342,9 +388,9 @@ init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, gammas, 
   param$phi <- phi
   
   #param$psi <- matrix(rnorm(2*length(thetas)), nrow = length(thetas), ncol = 2)
-  param$sigma_2 <- 1e-10
+  param$sigma_2 <- 1e-4
   param$z <- 0
-  param$chi <- 0.2
+  param$chi <- 0.1
   return(param)
   
 }
@@ -381,7 +427,9 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   hyper$Eigen_vector <- eig_vecs[, keep, drop = FALSE] # Eigen vectors with non null eigen values
   hyper$Eigen_vector_null <- t(eig_vecs[, !keep, drop = FALSE]) # eigen vectors eith null eigen values
   hyper$R <- Basis_Construction(0, n_basis, degree) - Basis_Construction(2*pi, n_basis, degree)
-  hyper$A <- rbind(hyper$Eigen_vector_null, hyper$R)
+  hyper$R1 <- Basis_Construction(0, n_basis, degree, derivatives = 1) - Basis_Construction(2*pi, n_basis, degree, derivatives = 1) # (B'(0) - B'(2pi))
+  hyper$R2 <- Basis_Construction(0, n_basis, degree, derivatives = 2) - Basis_Construction(2*pi, n_basis, degree, derivatives = 2)
+  hyper$A <- rbind(hyper$Eigen_vector_null, hyper$R, hyper$R1,hyper$R2)
   aux_eig <- eigen(t(hyper$A) %*% hyper$A)
   hyper$A_bar <- t(aux_eig$vectors[,aux_eig$values < tol])
   union_matrix <- rbind(hyper$A, hyper$A_bar)
@@ -455,7 +503,7 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   
   
   hyper$S_mat <- matrix(0, nrow = k_l, ncol = k_l)
-  hyper$a_sigma <- 1e-8
+  hyper$a_sigma <- 1e-4
   hyper$lambda_sigma_cp <- 2.38^2
   hyper$Sigma_sigma_cp  <- 1e-8
   hyper$mu_sigma_cp     <- 0
@@ -501,56 +549,82 @@ create_output <- function(mcmc_iter, k_l, n, L){
   output$Sigma <- array(NA, dim = c(mcmc_iter, 2, 2))
   output$alphas <- matrix(NA, nrow = mcmc_iter, ncol = n)
   output$betas <- matrix(NA, nrow = mcmc_iter, ncol = L)
-  output$gammas <- matrix(NA, nrow = mcmc_iter, ncol = L - 2)
+  output$gammas <- matrix(NA, nrow = mcmc_iter, ncol = L - 4)
   output$eta <- array(NA, c(mcmc_iter, n, 2))
   output$mean_i <- list()
   output$mean <- array(NA, c(mcmc_iter, k_l, 2))
   output$phi <- matrix(NA, nrow = mcmc_iter, ncol =1)
-  output$psi <- array(NA, dim = c(mcmc_iter, k_l - 3, 2))
+  output$psi <- array(NA, dim = c(mcmc_iter, k_l - 5, 2))
   output$sigma_2 <- matrix(NA, nrow = mcmc_iter, ncol = 1)
+  output$z <- matrix(NA, nrow = mcmc_iter, ncol = 1)
   return(output)
 }
 
-mean_constructor <- function(n_basis, degree, init_param, hyper, X){
+mean_constructor <- function(n_basis, degree, init, hyper, X){
   # n_basis --> number of internal knots
   # degree --> degree of the polynomial
   
-  n <- init_param$n
-  B_sim <- Basis_Construction(init_param$thetas, n_basis, degree) # build the basis with the current value of theta
-  init_param$r <- exp(B_sim %*% as.vector(init_param$betas))# compute the current value of the radius
-  mu_mean_x <- init_param$r*cos(init_param$thetas)
-  mu_mean_y <- init_param$r*sin(init_param$thetas)
+  n <- init$n
+  B_sim <- Basis_Construction(init$thetas, n_basis, degree) # build the basis with the current value of theta
+  init$r <- exp(B_sim %*% as.vector(init$betas))# compute the current value of the radius
+  mu_mean_x <- init$r*cos(init$thetas)
+  mu_mean_y <- init$r*sin(init$thetas)
   mean <- cbind(mu_mean_x, mu_mean_y)
-  init_param$mean <- cbind(mean) # average configuration 
+  init$mean <- cbind(mean) # average configuration 
   hyper$S_mat <- S_mat_constructor(hyper$S_mat, mean)
-  hyper$D_p <- D_p_constructor(mean)
-  # Precision <- (1 / init_param$sigma_2) * t(hyper$D_p) %*% hyper$S_mat %*% hyper$D_p
-  # U_prec <- chol(Precision)
-  k_free <- ncol(hyper$D_p)  # k - 3
-  # Z <- matrix(rnorm(k_free * 2), nrow = k_free, ncol = 2)
+  hyper$D_p <- D_p_constructor(mean, init$thetas, init$betas,init$r, n_basis, degree = degree)
+  init$z = 1
+  Precision <- t(hyper$D_p) %*% hyper$S_mat %*% hyper$D_p
+  K_inv <- chol2inv(chol(Precision)) # variance
+  k_free <- ncol(hyper$D_p)
+  V <- diag(1/diag(K_inv), nrow = k_free, ncol =k_free) #precision 
+  V <- (1/init$sigma_2) * V
+  if (init$z == 1) {
+    U_prec <- chol(Precision/init$sigma_2)
+  }
+  else{
+    U_prec <- chol(V)
+  }
+    # k - 3
+  z_raw <- rnorm(2 * k_free)
+  init$psi <-  matrix(backsolve(U_prec, z_raw), nrow = k_free, ncol = 2)
   
-  init_param$psi <- matrix(0, nrow = k_free, ncol = 2 )
+  #init$psi <- matrix(0, nrow = k_free, ncol = 2 )
   
-  init_param$W <- hyper$D_p %*% init_param$psi
+  init$W <- hyper$D_p %*% init$psi
   
   for (i in 1:n) { # compute rotation matrix 
-    init_param$R[,,i] <- matrix(c(cos(init_param$lambdas[i]), -sin(init_param$lambdas[i]), 
-                                  sin(init_param$lambdas[i]), cos(init_param$lambdas[i])), 
+    init$R[,,i] <- matrix(c(cos(init$lambdas[i]), -sin(init$lambdas[i]), 
+                                  sin(init$lambdas[i]), cos(init$lambdas[i])), 
                                 byrow = T, nrow = 2, ncol = 2)
-    eta_matrix <- matrix(init_param$eta[i,], nrow = length(init_param$thetas), ncol = 2, byrow = T)
-    init_param$mean_i[,,i] <- init_param$alphas[i]*(init_param$mean + hyper$S_mat%*%init_param$W)%*%init_param$R[,,i] + eta_matrix # compute the mean configuration for every unit
+    eta_matrix <- matrix(init$eta[i,], nrow = length(init$thetas), ncol = 2, byrow = T)
+    init$mean_i[,,i] <- init$alphas[i]*(init$mean + hyper$S_mat%*%init$W)%*%init$R[,,i] + eta_matrix # compute the mean configuration for every unit
     #init_param$mean_i[,,i] <- init_param$alphas[i]*(init_param$mean + project_warp(hyper$S_mat, init_param$W, init_param$thetas))%*%init_param$R[,,i] +
     #  eta_matrix # compute the mean configuration for every unit
     
-    init_param$Q_R[,,i] <- (1/(init_param$alphas[i]^2)) *t(init_param$R[,,i])%*%init_param$Sigma_inv%*%init_param$R[,,i] 
+    init$Q_R[,,i] <- (1/(init$alphas[i]^2)) *t(init$R[,,i])%*%init$Sigma_inv%*%init$R[,,i] 
     
-    res <- backsolve(init_param$chol_c,X[,,i] - init_param$mean_i[,,i],  transpose = TRUE)
+    res <- backsolve(init$chol_c,X[,,i] - init$mean_i[,,i],  transpose = TRUE)
     #init_param$residual[,,i] <- t(X[,,i] - init_param$mean_i[,,i])%*%init_param$C %*% (X[,,i] - init_param$mean_i[,,i])
-    init_param$residual[,,i] <- t(res)%*%res
+    init$residual[,,i] <- t(res)%*%res
   }
+  K <- t(hyper$D_p) %*% hyper$S_mat%*% hyper$D_p
+  Kinv <- chol2inv(chol(K))
+  w    <- 1 / diag(Kinv)
+  w_mat <- diag(w, nrow = k_free)
+  V <-  mean(diag(hyper$S_mat %*% hyper$D_p %*% solve(K) %*% t(hyper$D_p) %*% t(hyper$S_mat)))
+  lp_sig <- -log(V) - log(1 + (init$sigma_2/(V*hyper$a_sigma))^2)
+  logdetK <- as.numeric(determinant(K, logarithm = TRUE)$modulus)
+  if (init$z == 1) {
+    hyper$traces <- -0.5 * (1/init$sigma_2) * tr(t(init$W) %*% hyper$S_mat %*% init$W) +
+      logdetK - k_free*log(init$sigma_2) + lp_sig
+  }
+  else{
+    
+    hyper$traces <- -0.5 * (1/init$sigma_2) * sum(init$psi * (w * init$psi)) + sum(log(w)) - k_free*log(init$sigma_2) + lp_sig
+  }
+  hyper$D_ref <- D_p_raw(mean, init$thetas, init$betas, init$r, n_basis, degree)
   
-  hyper$traces <- -0.5 * 1/((init_param$sigma_2)) * tr(t(init_param$W) %*% hyper$S_mat %*% init_param$W) + 
-    as.numeric(determinant(t(hyper$D_p) %*% hyper$S_mat %*% hyper$D_p, logarithm = TRUE)$modulus)
   # return(init_param)
 }
 

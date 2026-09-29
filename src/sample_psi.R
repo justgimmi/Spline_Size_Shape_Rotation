@@ -1,12 +1,16 @@
 sample_psi <- function(init_param, hyper, X) {
-  n <- init_param$n
-  k_l <- init_param$k_l
-  D_p <- D_p_constructor(init_param$mean)
-  k_free <- ncol(D_p) # k_l - 3
-  
-  S_mat <- hyper$S_mat
-  Sigma_inv <- init_param$Sigma_inv
-  sigma_2 <- init_param$sigma_2
+  n <- init_param$n # number of units
+  k_l <- init_param$k_l # number of landmarks
+  r_curr <- exp(Basis_Construction(init_param$thetas, hyper$n_basis, hyper$degree) %*% init_param$betas) #current radius
+  D_p <- D_p_constructor(init_param$mean, init_param$thetas, init_param$betas, r_curr, hyper$n_basis, hyper$degree, hyper$D_p) #current D_p
+  k_free <- ncol(D_p) # k_l - 5
+  S_mat <- hyper$S_mat # S_mat
+  K <- t(D_p) %*% S_mat%*% D_p # precision of psi if z = 1 
+  Kinv <- chol2inv(chol(K)) #variance of psi if z = 1
+  w    <- 1 / diag(Kinv) # precision of psi if z = 0
+  w_mat <- diag(w, nrow = k_free, ncol = k_free)
+  Sigma_inv <- init_param$Sigma_inv # inverse of Sigma_e
+  sigma_2 <- init_param$sigma_2 # variance parameter 
   C_inv <- chol2inv(init_param$chol_c)
   
   # 1. Compute G = D_p' * S * C^{-1} * S * D_p  ((k-3) x (k-3))
@@ -28,7 +32,13 @@ sample_psi <- function(init_param, hyper, X) {
   
   # 3. Construct Precision matrix Omega_psi  (2(k-3) x 2(k-3))
   term1 <- n * kronecker(Sigma_inv, G)
-  term2 <- (1 / sigma_2) * kronecker(diag(2), t(D_p) %*% S_mat %*% D_p)
+  if (init$z == 1) {
+    term2 <- (1 / sigma_2) * kronecker(diag(2), K)
+  }
+  
+  else{
+    term2 <- (1 / sigma_2) * kronecker(diag(2),  w_mat)
+  }
   Omega_psi <- term1 + term2
   
   # 4. Construct RHS vector = (I_2 \otimes M) %*% vec(Sigma_inv)  (2(k-3) x 1)
@@ -61,8 +71,24 @@ sample_psi <- function(init_param, hyper, X) {
     res <- backsolve(init_param$chol_c, X[, , i] - init_param$mean_i[, , i], transpose = TRUE)
     init_param$residual[, , i] <- t(res) %*% res
   }
-  hyper$log_lik <- log_density(init_param)
-  hyper$traces <- -0.5 * 1/((init_param$sigma_2)) * tr(t(init_param$W) %*% hyper$S_mat %*% init_param$W) + 
-    log(det(t(hyper$D_p) %*% hyper$S_mat %*%hyper$D_p  ))
+  #hyper$log_lik <- log_density(init_param)
+  V <-  max(diag(S_mat %*% D_p %*% Kinv%*% t(D_p) %*% t(S_mat)))
+  lp_sig <- -log(V) - log(1 + (init_param$sigma_2/(V*hyper$a_sigma))^2)
+  logdetK <- as.numeric(determinant(K/init_param$sigma_2, logarithm = TRUE)$modulus)
+
+  
+  
+  if (init_param$z == 1) {
+    hyper$traces <- -0.5 * (1/init_param$sigma_2) * tr(t(init_param$W) %*% hyper$S_mat %*% init_param$W) +
+      logdetK  + lp_sig
+  }
+  else{
+    
+    hyper$traces <- -0.5 * (1/init_param$sigma_2) * tr(t(init_param$psi) %*% w_mat %*% init_param$psi) + sum(log(w)) - k_free*log(init_param$sigma_2) +
+      lp_sig
+  }
+  
   hyper$D_p <- D_p
+  init_param$r <- r_curr
+  hyper$log_lik <- log_density(init)
 }

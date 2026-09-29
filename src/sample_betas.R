@@ -9,12 +9,14 @@ eval_log_lik_beta <- function(gamma_cand, init, hyper, X, k_l){
   mu_mean_y <- r*sin(init$thetas)
   mean <- cbind(mu_mean_x, mu_mean_y) # average configuration 
   S_mat_cand <- S_mat_constructor(hyper$S_mat, mean)
-  D_p_cand <- D_p_constructor(mean, D_p_prev = hyper$D_p)
+  D_p_cand <- D_p_constructor(mean, init$thetas, hyper$C_bar%*%gamma_cand, r, hyper$n_basis, hyper$degree, D_p_prev = hyper$D_ref)
   #D_p_cand <- hyper$D_p
   W_cand <- D_p_cand %*%init$psi
   #W_cand <- init$W
   mean_i <- array(NA, dim = c(k_l, 2, n))
-  residual <- array(NA, dim = c(2, 2, n) )
+  residual <- array(NA, dim = c(2, 2, n))
+  
+  
   for (i in 1:n) { # compute rotation matrix 
 
     eta_matrix <- matrix(init$eta[i,], nrow = k_l, ncol = 2, byrow = T)
@@ -33,16 +35,28 @@ eval_log_lik_beta <- function(gamma_cand, init, hyper, X, k_l){
   val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma)) -
     init$n*log(det(init$C))
   
-  val_3 <- -0.5 * 1/((init$sigma_2)) * tr(t(W_cand) %*% S_mat_cand %*% W_cand) + 
-    determinant(t(D_p_cand) %*% S_mat_cand %*% D_p_cand, logarithm = TRUE)$modulus
+  K <- t(D_p_cand) %*% S_mat_cand%*% D_p_cand
+  Kinv <- chol2inv(chol(K))
+  w    <- 1 / diag(Kinv)
+  w_mat <- diag(w, nrow = length(w), ncol = length(w))
+  V <-  mean(diag(S_mat_cand %*% D_p_cand %*% Kinv %*% t(D_p_cand) %*% t(S_mat_cand)))
+  lp_sig <- -log(V) - log(1 + (init$sigma_2/(V*hyper$a_sigma))^2)
+  logdetK <- as.numeric(determinant(K/init$sigma_2, logarithm = TRUE)$modulus)
+  
   if (init$z == 1) {
+    k_free <- ncol(hyper$D_p)
+    val_3 <- -0.5 * (1/init$sigma_2) * tr(t(W_cand) %*% S_mat_cand %*% W_cand) +
+      logdetK + lp_sig
     log_lik <- -0.5 * val + val_2 + val_3
   }
   else{
-    log_lik <- -0.5 * val + val_2
+    k_free <- ncol(hyper$D_p)
+    val_3 <- -0.5 * (1/init$sigma_2) * tr(t(init$psi) %*% w_mat %*% init$psi) + sum(log(w)) - k_free*log(init$sigma_2) + lp_sig
+      
+    log_lik <- -0.5 * val + val_2 + val_3
   }
   return(list(log_lik =  log_lik, residual = residual, mean = mean, mean_i = mean_i,
-              S_mat = S_mat_cand, W = W_cand, D_p = D_p_cand, val_3 = val_3))
+              S_mat = S_mat_cand, W = W_cand, D_p = D_p_cand, val_3 = val_3, r = r))
 }
 
 sample_beta <- function(init, hyper, X, k_l){
@@ -56,7 +70,7 @@ sample_beta <- function(init, hyper, X, k_l){
   }
   else{
   #thresh <- hyper$log_lik + hyper$traces + log(u)
-    thresh <- hyper$log_lik + log(u)
+    thresh <- hyper$log_lik + hyper$traces + log(u)
   }
   theta <- runif(n = 1)*2*pi
   theta_min <- theta - 2*pi
@@ -88,7 +102,7 @@ sample_beta <- function(init, hyper, X, k_l){
   }
   
   else{
-    hyper$log_lik <- res_cand$log_lik
+    hyper$log_lik <- res_cand$log_lik - res_cand$val_3
     }
   init$gammas <- gamma_cand 
   init$betas <- hyper$C_bar %*% gamma_cand
@@ -99,6 +113,7 @@ sample_beta <- function(init, hyper, X, k_l){
   hyper$S_mat <- res_cand$S_mat
   hyper$D_p <- res_cand$D_p
   hyper$traces <- res_cand$val_3
+  init$r <- res_cand$r
 
 }
 

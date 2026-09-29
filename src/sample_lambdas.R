@@ -96,6 +96,43 @@
 # }
 
 
+
+#   res_star <- backsolve(C_chol, tilde_E_star, transpose = TRUE)
+#   res_star_bis <- t(res_star)%*%res_star
+#   # const_i = tr[Q_i * E_i' Cinv E_i]
+#   quad_star <- res_star_bis[1, 1] * Q_R_star[1, 1] + 2 * res_star_bis[1, 2] * Q_R_star[1, 2] + 
+#     res_star_bis[2, 2] * Q_R_star[2, 2]
+#   
+#   # posterior precision/covariance for eta_i, using s = 1_k' Cinv 1_k (NOT k_l)
+#   Sigma_star <- solve(s * Q_R_star + hyper$Sigma_eta_inv)
+#   
+#   # b_i = E_i' Cinv 1_k ; mu_eta = Sigma_post %*% Q_i %*% b_i
+#   b_star  <- t(res_star) %*% s_part
+#   #b_star <- v %*% ones
+#   mu_eta_star <- as.numeric(Sigma_star %*% Q_R_star %*% b_star)
+#   
+#   quad_eta_star <- as.numeric(t(mu_eta_star) %*% solve(Sigma_star) %*% mu_eta_star)
+#   
+#   log_prop <- 0.5*log(det(Sigma_star)) - 0.5*quad_star + 0.5*quad_eta_star
+#   
+#   # ---- current state ----
+#   Q_R_curr <- init$Q_R[,,index]
+#   eta_matrix <- matrix(eta_curr, nrow = k_l, ncol = 2, byrow = TRUE)
+#   tilde_E_curr <- X[,,index] - init$mean_i[,,index] + eta_matrix   # E_i(lambda_curr)
+#   res_curr <- backsolve(C_chol, tilde_E_curr, transpose = TRUE)
+#   res_curr_bis <- t(res_curr)%*%res_curr
+#   
+#   quad_curr <- res_curr_bis[1, 1] * Q_R_curr[1, 1] + 2 * res_curr_bis[1, 2] * Q_R_curr[1, 2] + 
+#     res_curr_bis[2, 2] * Q_R_curr[2, 2]
+#   Sigma_curr <- solve(s * Q_R_curr + hyper$Sigma_eta_inv)
+#   b_curr  <- t(res_curr) %*% s_part
+#   mu_eta_curr <- as.numeric(Sigma_curr %*% Q_R_curr %*% b_curr)
+#   quad_eta_curr <- as.numeric(t(mu_eta_curr) %*% solve(Sigma_curr) %*% mu_eta_curr)
+#   
+#   log_curr <- 0.5*log(det(Sigma_curr)) - 0.5*quad_curr + 0.5*quad_eta_curr
+#   
+#   log_alpha <- min(log_prop - log_curr, 0)
+
 sample_lambda_eta <- function(init, hyper, index, X, burn = TRUE){
   # the idea of this function is to sample lambda and eta all together
   # we sample lambda from either a uniform or a von-mises distribution 
@@ -107,6 +144,10 @@ sample_lambda_eta <- function(init, hyper, index, X, burn = TRUE){
   alpha_i <- init$alphas[index] # size per unit i
   lambda_curr <- init$lambdas[index] # current lambda i
   eta_curr <- init$eta[index, ] # current eta i
+  ones <- matrix(1, nrow = k_l, ncol = 1)
+  C_inv <- chol2inv(init$chol_c)
+  c_sum <- sum(C_inv)                 # 1'C^{-1}1
+  Cinv1 <- rowSums(C_inv)      # Cinv %*% 1_k, precomputed once
   lambda_prop <- lambda_curr + rnorm(n = 1, mean = 0, sd = sqrt(hyper$lambda_lambda[index] *  hyper$Sigma_lambda[index])) # proposed lambda
   #lambda_star <- runif(n = 1, 0, 2*pi)
   lambda_star <- lambda_prop
@@ -119,21 +160,26 @@ sample_lambda_eta <- function(init, hyper, index, X, burn = TRUE){
   #mean_res_star <- alpha_i * (init$mean + project_warp(hyper$S_mat, init$W, init$thetas)) %*% R_mat_star # proposed mean configuration
   #project_warp(S_mat, init_param$W, init_param$thetas)
   tilde_E_star <- X[,,index] - mean_res_star
-  quad_star <- sum((tilde_E_star %*% Q_R_star) * tilde_E_star)
-  Sigma_star <- solve(k_l*Q_R_star + hyper$Sigma_eta_inv)
-  mu_eta_star <- as.matrix(t(Sigma_star %*%Q_R_star %*%t(tilde_E_star) %*% matrix(1, nrow = k_l)))
+  
+  quad_star  <- sum((t(tilde_E_star) %*% C_inv %*% tilde_E_star) * Q_R_star)
+  Sigma_star <- solve(c_sum * Q_R_star + hyper$Sigma_eta_inv)
+  mu_eta_star <- t(as.matrix(Sigma_star %*% Q_R_star %*% (t(tilde_E_star) %*% Cinv1)))
   quad_eta_star <- as.numeric(
     mu_eta_star %*%
       solve(Sigma_star) %*%
       t(mu_eta_star)
   )
   log_prop <- 0.5*log((det(Sigma_star))) - 0.5*quad_star + 0.5*quad_eta_star
+  Sigma_curr <- solve(c_sum * init$Q_R[,,index] + hyper$Sigma_eta_inv)
+
   
-  Sigma_curr <- solve(init$k_l*init$Q_R[,,index] + hyper$Sigma_eta_inv)
+  #Sigma_curr <- solve(init$k_l*init$Q_R[,,index] + hyper$Sigma_eta_inv)
   eta_matrix <- matrix(init$eta[index,], nrow = length(init$thetas), ncol = 2, byrow = T)
   tilde_E_curr <- X[,,index] - init$mean_i[,,index] + eta_matrix
-  quad_curr <- sum((tilde_E_curr %*% init$Q_R[,,index]) * tilde_E_curr)
-  mu_eta_curr <- as.matrix(t(Sigma_curr %*%init$Q_R[,,index] %*%t(tilde_E_curr) %*% matrix(1, nrow = k_l)))
+  quad_curr  <- sum((t(tilde_E_curr) %*% C_inv %*% tilde_E_curr) * init$Q_R[,,index])
+  #quad_curr <- sum((tilde_E_curr %*% init$Q_R[,,index]) * tilde_E_curr)
+  mu_eta_curr <- t(as.matrix(Sigma_curr %*% init$Q_R[,,index] %*% (t(tilde_E_curr) %*% Cinv1)))
+  #mu_eta_curr <- as.matrix(t(Sigma_curr %*%init$Q_R[,,index] %*%t(tilde_E_curr) %*% matrix(1, nrow = k_l)))
   quad_eta_curr <- as.numeric(
     mu_eta_curr %*%
       solve(Sigma_curr) %*%
