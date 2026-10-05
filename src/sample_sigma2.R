@@ -66,7 +66,7 @@ sample_sigma2 <- function(init, hyper, X, burn = TRUE){
   else{
     quad <- tr(t(init$psi) %*% w_mat %*% init$psi)
   }
-  V <- mean(diag(hyper$S_mat %*% hyper$D_p %*% Kinv %*% t(hyper$D_p) %*% t(hyper$S_mat)))
+  V <- max(diag(hyper$S_mat %*% hyper$D_p %*% Kinv %*% t(hyper$D_p) %*% t(hyper$S_mat)))
   log_sigma_curr <- log(init$sigma_2)
   log_sigma_prop <- log_sigma_curr + rnorm(1, sd = sqrt(hyper$lambda_sigma_cp * hyper$Sigma_sigma_cp))
   sigma_prop <- exp(log_sigma_prop)
@@ -91,17 +91,17 @@ sample_sigma2 <- function(init, hyper, X, burn = TRUE){
     hyper$mu_sigma_cp     <- hyper$mu_sigma_cp + g * (log(init$sigma_2) - hyper$mu_sigma_cp)
   }
   
-  # epsilon = psi / sqrt(sigma_2) ----
+  # # #epsilon = psi / sqrt(sigma_2) ----
   # eps <- init$psi / sqrt(init$sigma_2)
-  # 
-  # ## ---- STEP B (NCP): sigma_2 | epsilon — usa la verosimiglianza dei dati ----
-  # log_sigma_curr2 <- log(init$sigma_2)
+  # # 
+  # # ## ---- STEP B (NCP): sigma_2 | epsilon — usa la verosimiglianza dei dati ----
+  # log_sigma_curr2 <- log(init$sigma_2/V)
   # log_sigma_prop2 <- log_sigma_curr2 + rnorm(1, sd = sqrt(hyper$lambda_sigma_ncp * hyper$Sigma_sigma_ncp))
-  # sigma_prop2 <- exp(log_sigma_prop2)
-  # 
+  # sigma_prop2 <- exp(log_sigma_prop2) * V
+  # # 
   # psi_cand <- eps * sqrt(sigma_prop2)
   # W_cand <- hyper$D_p %*% psi_cand
-  # 
+  #  
   # mean_i_cand <- array(0, dim = c(k_l, 2, n))
   # residual_cand <- array(0, dim = c(2, 2, n))
   # val_cand <- 0
@@ -115,8 +115,8 @@ sample_sigma2 <- function(init, hyper, X, burn = TRUE){
   # }
   # val_curr <- sum(init$Q_R * init$residual)
   # 
-  # prior_cand2 <- -log(1 + (sigma_prop2/(V*hyper$a_sigma))^2) + log_sigma_prop2
-  # prior_curr2 <- -log(1 + (init$sigma_2/(V*hyper$a_sigma))^2) + log_sigma_curr2
+  # prior_cand2 <- -log(1 + (sigma_prop2/(hyper$a_sigma))^2) + log_sigma_prop2
+  # prior_curr2 <- -log(1 + (init$sigma_2/(hyper$a_sigma))^2) + log_sigma_curr2
   # 
   # log_alpha_B <- min(0, (-0.5*val_cand + prior_cand2) - (-0.5*val_curr + prior_curr2))
   # if (log(runif(1)) <= log_alpha_B) {
@@ -130,8 +130,8 @@ sample_sigma2 <- function(init, hyper, X, burn = TRUE){
   # if (burn) {
   #   g <- min(0.01, hyper$t^(-0.5))
   #   hyper$lambda_sigma_ncp <- hyper$lambda_sigma_ncp * exp(g * (exp(log_alpha_B) - hyper$a_opt))
-  #   hyper$Sigma_sigma_ncp  <- hyper$Sigma_sigma_ncp + g * ((log(init$sigma_2) - hyper$mu_sigma_ncp)^2 - hyper$Sigma_sigma_ncp)
-  #   hyper$mu_sigma_ncp     <- hyper$mu_sigma_ncp + g * (log(init$sigma_2) - hyper$mu_sigma_ncp)
+  #   hyper$Sigma_sigma_ncp  <- hyper$Sigma_sigma_ncp + g * ((log(init$sigma_2/V) - hyper$mu_sigma_ncp)^2 - hyper$Sigma_sigma_ncp)
+  #   hyper$mu_sigma_ncp     <- hyper$mu_sigma_ncp + g * (log(init$sigma_2/V) - hyper$mu_sigma_ncp)
   # }
 
   lp_sig <- -log(V) - log(1 + (init$sigma_2/(V*hyper$a_sigma))^2)

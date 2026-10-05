@@ -16,7 +16,7 @@ eval_log_lik_beta <- function(gamma_cand, init, hyper, X, k_l){
   mean_i <- array(NA, dim = c(k_l, 2, n))
   residual <- array(NA, dim = c(2, 2, n))
   
-  
+  k_free <- ncol(hyper$D_p)
   for (i in 1:n) { # compute rotation matrix 
 
     eta_matrix <- matrix(init$eta[i,], nrow = k_l, ncol = 2, byrow = T)
@@ -35,11 +35,13 @@ eval_log_lik_beta <- function(gamma_cand, init, hyper, X, k_l){
   val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma)) -
     init$n*log(det(init$C))
   
-  K <- t(D_p_cand) %*% S_mat_cand%*% D_p_cand
-  Kinv <- chol2inv(chol(K))
+  K <- crossprod(D_p_cand, S_mat_cand %*% D_p_cand)
+  Lk <- tryCatch(chol(K), error = function(e) NULL)
+  if (is.null(Lk)) return(list(log_lik = -Inf, val_3 = 0))
+  Kinv    <- chol2inv(Lk)
   w    <- 1 / diag(Kinv)
   w_mat <- diag(w, nrow = length(w), ncol = length(w))
-  V <-  mean(diag(S_mat_cand %*% D_p_cand %*% Kinv %*% t(D_p_cand) %*% t(S_mat_cand)))
+  V <-  max(diag(S_mat_cand %*% D_p_cand %*% Kinv %*% t(D_p_cand) %*% t(S_mat_cand)))
   lp_sig <- -log(V) - log(1 + (init$sigma_2/(V*hyper$a_sigma))^2)
   logdetK <- as.numeric(determinant(K/init$sigma_2, logarithm = TRUE)$modulus)
   

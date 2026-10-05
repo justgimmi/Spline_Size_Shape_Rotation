@@ -2,10 +2,10 @@ sample_psi <- function(init_param, hyper, X) {
   n <- init_param$n # number of units
   k_l <- init_param$k_l # number of landmarks
   r_curr <- exp(Basis_Construction(init_param$thetas, hyper$n_basis, hyper$degree) %*% init_param$betas) #current radius
-  D_p <- D_p_constructor(init_param$mean, init_param$thetas, init_param$betas, r_curr, hyper$n_basis, hyper$degree, hyper$D_p) #current D_p
+  D_p <- D_p_constructor(init_param$mean, init_param$thetas, init_param$betas, r_curr, hyper$n_basis, hyper$degree, hyper$D_ref) #current D_p
   k_free <- ncol(D_p) # k_l - 5
   S_mat <- hyper$S_mat # S_mat
-  K <- t(D_p) %*% S_mat%*% D_p # precision of psi if z = 1 
+  K <- t(D_p) %*% S_mat%*% D_p# precision of psi if z = 1 
   Kinv <- chol2inv(chol(K)) #variance of psi if z = 1
   w    <- 1 / diag(Kinv) # precision of psi if z = 0
   w_mat <- diag(w, nrow = k_free, ncol = k_free)
@@ -32,7 +32,7 @@ sample_psi <- function(init_param, hyper, X) {
   
   # 3. Construct Precision matrix Omega_psi  (2(k-3) x 2(k-3))
   term1 <- n * kronecker(Sigma_inv, G)
-  if (init$z == 1) {
+  if (init_param$z == 1) {
     term2 <- (1 / sigma_2) * kronecker(diag(2), K)
   }
   
@@ -90,5 +90,5 @@ sample_psi <- function(init_param, hyper, X) {
   
   hyper$D_p <- D_p
   init_param$r <- r_curr
-  hyper$log_lik <- log_density(init)
+  hyper$log_lik <- log_density(init_param)
 }

@@ -146,7 +146,7 @@ sample_z <- function(init, hyper, X){
   Kinv <- chol2inv(chol(K))
   w    <- 1 / diag(Kinv)
   w_mat <- diag(w, nrow = k_free, ncol = k_free)
-  V <-  mean(diag(S_mat %*% D_p %*% Kinv %*% t(D_p) %*% t(S_mat)))
+  V <-  max(diag(S_mat %*% D_p %*% Kinv %*% t(D_p) %*% t(S_mat)))
   lp_sig <- -log(V) - log(1 + (init$sigma_2/(V*hyper$a_sigma))^2)
   logdetK <- as.numeric(determinant(K/init$sigma_2, logarithm = TRUE)$modulus)
   for (i in 1:n) {

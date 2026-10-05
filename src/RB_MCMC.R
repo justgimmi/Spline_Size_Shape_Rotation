@@ -61,7 +61,11 @@ RB_MCMC <- function(total_iter, burnin, thinning,
       #print(j)
       hyper_env$t <- hyper_env$t + 1
       cli_progress_update(id = pbar, inc = 1)
-      sample_z(init_env, hyper_env, X)
+      sample_theta_logit_normal(init_env, hyper_env, X)
+      #print(init_env$mean)
+      sample_beta(init_env, hyper_env, X, k_l)
+      # sample_z(init_env, hyper_env, X)
+      sample_psi(init_env, hyper_env, X)
       sample_sigma2(init_env, hyper_env, X, burn = burn)
       # if (init_env$z == 1) {
       #   sample_psi(init_env, hyper_env, X)
@@ -71,9 +75,7 @@ RB_MCMC <- function(total_iter, burnin, thinning,
       hyper_env$log_lik <- log_density(init_env)
       sample_phi(init_env, hyper_env, X, burn = burn)
       hyper_env$log_lik <- log_density(init_env)
-      sample_theta_logit_normal(init_env, hyper_env, X)
-      #print(init_env$mean)
-      sample_beta(init_env, hyper_env, X, k_l)
+      
       #print(init_env$mean)
       for (indice in 1:n) {
         #sample_eta(init_env, hyper_env, indice, X) 
@@ -219,54 +221,54 @@ RB_MCMC <- function(total_iter, burnin, thinning,
   return(out)
   
 }
-
-max(diag(hyper_env$S_mat %*% hyper_env$D_p %*% Kinv %*% t(hyper_env$D_p) %*% t(hyper_env$S_mat)))
-K <- t(hyper_env$D_p) %*% hyper_env$S_mat %*% hyper_env$D_p
-Kinv <- chol2inv(chol(K))
-w <- 1/diag(Kinv)
-print(range(w))
-print(range(diag(K)))   # confronta con w: se w << diag(K), la diagnosi è questa
-
-
-K <- t(hyper_env$D_p) %*% hyper_env$S_mat %*% hyper_env$D_p   # k_free x k_free, bending energy nello spazio di psi
-eig <- eigen(K, symmetric = TRUE)
-ord <- order(eig$values)                   # crescente: autovalori piccoli = più lisci, per primi
-keep <- ord[1:q]                            # le q direzioni più lisce
-D_p_full %*% eig$vectors[, keep, drop = FALSE]   
-
-B_gamma <- hyper_env$B_sim %*% hyper_env$C_bar   # k x Lgamma
-tangent <- cbind(init_env$mean[,1] * B_gamma, init_env$mean[,2] * B_gamma)  # k x 2Lgamma, colonne = d(mu)/d(gamma_j)
-
-# proietta le colonne di D_p sullo spazio tangente e guarda quanto "entrano"
-P_tangent <- tangent %*% solve(t(tangent) %*% tangent, t(tangent))  # proiettore su span(tangent)
-overlap <- diag(t(hyper_env$D_p) %*% P_tangent %*% hyper_env$D_p)  # per ogni colonna di D_p, quanta norma cade nello spazio tangente
-print(overlap)  # valori vicini a 1 = quella direzione di psi è quasi completamente "duplicata" da gamma
-
-
-
-
-
-check <- eval_log_lik_theta_joint(init_env$thetas, init_env, hyper_env, X)
-cat("hyper$log_lik =", hyper_env$log_lik,
-    " recomputed at current theta =", check$log_lik - check$val_3,
-    " diff =", check$log_lik - check$val_3 - hyper_env$log_lik, "\n")
-
-check <- eval_log_lik_theta_joint(init_env$thetas, init_env, hyper_env, X)
-
-cat("mean diff       :", max(abs(check$mean       - init_env$mean)), "\n")
-cat("S_mat diff      :", max(abs(check$S_mat      - hyper_env$S_mat)), "\n")
-cat("C diff          :", max(abs(check$C          - init_env$C)), "\n")
-cat("chol_c diff     :", max(abs(check$chol_c     - init_env$chol_c)), "\n")
-cat("W diff          :", max(abs(check$W          - init_env$W)), "\n")
-cat("mean_i diff (i=1):", max(abs(check$mean_i[,,1] - init_env$mean_i[,,1])), "\n")
-cat("residual diff(i=1):", max(abs(check$residual[,,1] - init_env$residual[,,1])), "\n")
-cat("Q_R used same object? ", identical(init_env$Q_R, init_env$Q_R), "\n")  # sanity
-cat("log_lik diff    :", check$log_lik - check$val_3- hyper_env$log_lik, "\n")
-
-
-
-colSums(init_env$W)
-t(init_env$mean)%*%init_env
+# sam <- mat
+# max(diag(hyper_env$S_mat %*% hyper_env$D_p %*% Kinv %*% t(hyper_env$D_p) %*% t(hyper_env$S_mat)))
+# K <- t(hyper_env$D_p) %*% hyper_env$S_mat %*% hyper_env$D_p
+# Kinv <- chol2inv(chol(K))
+# w <- 1/diag(Kinv)
+# print(range(w))
+# print(range(diag(K)))   # confronta con w: se w << diag(K), la diagnosi è questa
+# 
+# 
+# K <- t(hyper_env$D_p) %*% hyper_env$S_mat %*% hyper_env$D_p   # k_free x k_free, bending energy nello spazio di psi
+# eig <- eigen(K, symmetric = TRUE)
+# ord <- order(eig$values)                   # crescente: autovalori piccoli = più lisci, per primi
+# keep <- ord[1:q]                            # le q direzioni più lisce
+# D_p_full %*% eig$vectors[, keep, drop = FALSE]   
+# 
+# B_gamma <- hyper_env$B_sim %*% hyper_env$C_bar   # k x Lgamma
+# tangent <- cbind(init_env$mean[,1] * B_gamma, init_env$mean[,2] * B_gamma)  # k x 2Lgamma, colonne = d(mu)/d(gamma_j)
+# 
+# # proietta le colonne di D_p sullo spazio tangente e guarda quanto "entrano"
+# P_tangent <- tangent %*% solve(t(tangent) %*% tangent, t(tangent))  # proiettore su span(tangent)
+# overlap <- diag(t(hyper_env$D_p) %*% P_tangent %*% hyper_env$D_p)  # per ogni colonna di D_p, quanta norma cade nello spazio tangente
+# print(overlap)  # valori vicini a 1 = quella direzione di psi è quasi completamente "duplicata" da gamma
+# 
+# 
+# 
+# 
+# 
+# check <- eval_log_lik_theta_joint(init_env$thetas, init_env, hyper_env, X)
+# cat("hyper$log_lik =", hyper_env$log_lik,
+#     " recomputed at current theta =", check$log_lik - check$val_3,
+#     " diff =", check$log_lik - check$val_3 - hyper_env$log_lik, "\n")
+# 
+# check <- eval_log_lik_theta_joint(init_env$thetas, init_env, hyper_env, X)
+# 
+# cat("mean diff       :", max(abs(check$mean       - init_env$mean)), "\n")
+# cat("S_mat diff      :", max(abs(check$S_mat      - hyper_env$S_mat)), "\n")
+# cat("C diff          :", max(abs(check$C          - init_env$C)), "\n")
+# cat("chol_c diff     :", max(abs(check$chol_c     - init_env$chol_c)), "\n")
+# cat("W diff          :", max(abs(check$W          - init_env$W)), "\n")
+# cat("mean_i diff (i=1):", max(abs(check$mean_i[,,1] - init_env$mean_i[,,1])), "\n")
+# cat("residual diff(i=1):", max(abs(check$residual[,,1] - init_env$residual[,,1])), "\n")
+# cat("Q_R used same object? ", identical(init_env$Q_R, init_env$Q_R), "\n")  # sanity
+# cat("log_lik diff    :", check$log_lik - check$val_3- hyper_env$log_lik, "\n")
+# 
+# 
+# 
+# colSums(init_env$W)
+# t(init_env$mean)%*%init_env
 
 
 
@@ -307,7 +309,7 @@ X <- X[orders, ,]
 gpa <- procGPA(X, scale = TRUE)
 
 mean_shape <- gpa$mshape
-
+plot(mean_shape)
 theta_init <- atan2(mean_shape[,2], mean_shape[,1])
 theta_init <- ifelse(theta_init < 0, theta_init + 2*pi, theta_init)
 
@@ -333,11 +335,18 @@ mat_dist <- covariance_mat(mat_dist,theta_init)
 b_phi <- 2*max(mat_dist)/3
 #b_phi <- pi
 a_phi <- min(mat_dist[mat_dist != 0])/3
+b_phi <- 2*pi/3
+#a_phi <- pi/12
 hyper <- hyperparameters(1, 5e-4, 12, 3, width_theta = 1, m = 6, nu = 10,
                          psi = diag(0.1, nrow = 2),n = dim(X)[3], a = 0.01, b = 0.01, a_phi = a_phi, b_phi = b_phi, X = X)
-
-
-
+# prova <- init_mu_star (X,n_basis = 30, degree = 3,
+#                          start   = "circle",
+#                          ridge   = 1e-1,
+#                          sigma0  = c(0.1, 0.1), phi0 = 0.5,
+#                          plot    = TRUE)
+# init <- prova$init
+# hyper <- prova$hyper
+par(mfrow = c(1,1))
 hyper$K_gamma2
 hyper$tau_acc
 hyper$S_mat
@@ -367,7 +376,7 @@ r_emp <- sqrt(mean_shape_ordered[,1]^2 + mean_shape_ordered[,2]^2)
 log_r_emp <- log(r_emp)
 B_init <- Basis_Construction(theta_init,12, 3)
 
-beta_init <- solve(t(B_init) %*% B_init + 1e-10 * diag(ncol(B_init)), t(B_init) %*% log_r_emp)
+beta_init <- solve(t(B_init) %*% B_init + 1e-1 * diag(ncol(B_init)), t(B_init) %*% log_r_emp)
 
 sum(beta_init)
 gamma_init <- solve(
@@ -383,7 +392,7 @@ r_pure <- as.numeric(exp(B_init %*% beta_init))
 mu_pure <- cbind(r_pure * cos(theta_init), r_pure * sin(theta_init))
 mu_pure_centered <- scale(mu_pure, scale = FALSE)
 
-
+plot(mu_pure)
 alpha_sync  <- numeric(dim(X)[3])
 lambda_sync <- numeric(dim(X)[3])
 eta_sync    <- matrix(NA, nrow = dim(X)[3], ncol = 2)
@@ -435,14 +444,27 @@ psi <- (nu_prior - 2 - 1) * S_hat   # so that E[Sigma_e] = S_hat
 #lambda_init <- rep(0, 120)
 init <- init_param(c(0.1, 0.1),lambda_sync, theta_init,beta_init,
                    S_hat,
-                   eta_sync,alpha_sync, gamma_init, phi = 0.3, n = dim(X)[3])
+                   eta_sync,alpha_sync, gamma_init, phi = 0.5, n = dim(X)[3])
 
-hyper <- hyperparameters(2, 0.5, 8, 3, width_theta = 1, m = 6, nu = 10,
-                         psi = psi,n = dim(X)[3], a = 0.01, b = 0.01, a_phi = a_phi, b_phi = b_phi, X = X)
-
+# hyper <- hyperparameters(2, 0.5, 8, 3, width_theta = 1, m = 6, nu = 10,
+#                          psi = psi,n = dim(X)[3], a = 0.01, b = 0.01, a_phi = a_phi, b_phi = b_phi, X = X)
+X <- sam$X
+X <- mat_not_demented
+X <- final_array
+prova <- init_mu_star (X,n_basis = 12, degree = 3,
+                       start   = "gpa",
+                       ridge   = 1e-1,
+                       sigma0  = c(0.1, 0.1),
+                       plot    = TRUE)
+init <- prova$init
+hyper <- prova$hyper
+X <- prova$X
+hyper$b_phi
 save(sam, X, hyper, init, file = "No_warp.RData")
 save(sam, X, hyper, init, file = "warp_indep.RData")
 save(sam, X, hyper, init, file = "warp.RData")
+save(X, hyper, init, file = "No_Demente.RData")
+save(X, hyper, init, file = "foglie.RData")
 load("No_warp.RData")
 hyper$log_lik
 hyper$K
@@ -468,11 +490,13 @@ init$chi
 # init <- init_param(0.01, runif(n = 100)*2*pi, sam$theta,sam$betas, diag(0.01, nrow = 2),
 #                    sam$eta,rgamma(n = 100, 1, 1), n <- dim(sam$X)[3])
 hyper$a_sigma
+init$Z
 tic()
 par(mfrow = c(1, 3))
 MCMC_samp <- RB_MCMC(total_iter = 1e5, burnin = 30000, thinning  = 10, X = X, 
                      init = init, hyper = hyper)
 toc()
+hyper$b_phi
 mean(MCMC_samp$output$z)
 plot(MCMC_samp$output$z)
 gcinfo(FALSE)
