@@ -20,7 +20,9 @@ eval_log_lik_theta_joint <- function(theta_cand, init, hyper, X) {
   mean_i_array <- array(0, dim = c(k_l, 2, n))
   residual_array <- array(0, dim = c(2, 2, n))
   mat_cand <- covariance_mat(init$mat_dist, theta_cand)
-  C_cand <- exp(-mat_cand/init$phi)
+  # C_cand <- exp(-mat_cand/init$phi)
+  #C_cand <- diag(1, nrow = k_l, ncol = k_l)
+  C_cand <- init$C
   chol_c_cand <- chol(C_cand)
   
   
@@ -28,11 +30,14 @@ eval_log_lik_theta_joint <- function(theta_cand, init, hyper, X) {
   D_p_cand <- D_p_constructor(mean_cand, theta_cand, init$betas, r_cand, hyper$n_basis, hyper$degree, D_p_prev = hyper$D_ref)
   #D_p_cand <- hyper$D_p
   #W_cand <- init$W
-  W_cand <- D_p_cand %*%init$psi
+  #W_cand <- D_p_cand %*%init$psi
+  k_free <- ncol(hyper$D_p)
+  W_cand <- array(NA, dim = dim(init$W))
   for (i in 1:n) {
+    W_cand[,,i] <- D_p_cand %*%init$psi[,,i]
     eta_matrix <- matrix(init$eta[i, ], nrow = k_l, ncol = 2, byrow = TRUE)
     #mean_i_cand <- init$alphas[i] * (mean_cand + S_mat_cand%*% W_cand)%*% init$R[,,i] + eta_matrix
-    mean_i_cand <- init$alphas[i] * (mean_cand + project_warp(S_mat_cand, W_cand, theta_cand))%*% init$R[,,i] + eta_matrix
+    mean_i_cand <- init$alphas[i] * (mean_cand + S_mat_cand%*% W_cand[,,i])%*% init$R[,,i] + eta_matrix
     res_cand <- X[,,i] - mean_i_cand
     res_cand <- backsolve(chol_c_cand,res_cand,  transpose = TRUE)
     res_mat <- t(res_cand) %*% res_cand
@@ -43,30 +48,34 @@ eval_log_lik_theta_joint <- function(theta_cand, init, hyper, X) {
   }
   
   val_2 <- -2 * k_l * sum(log(init$alphas)) - ((n * k_l) / 2) * log(det(init$Sigma)) - n*log(det(C_cand))
-  k_free <- ncol(hyper$D_p)
   K <- t(D_p_cand) %*% S_mat_cand%*% D_p_cand
   
   K <- crossprod(D_p_cand, S_mat_cand %*% D_p_cand)
   Lk <- tryCatch(chol(K), error = function(e) NULL)
   if (is.null(Lk)) return(list(log_lik = -Inf, val_3 = 0))
+  dL <- diag(Lk)
+  if (max(dL) / min(dL) > 1e7) return(list(log_lik = -Inf, val_3 = 0))
   Kinv    <- chol2inv(Lk)
   w <- 1 / diag(Kinv)
   w_mat <- diag(w, ncol = length(w), nrow = length(w))
-  V <-  max(diag(S_mat_cand %*% D_p_cand %*% Kinv %*% t(D_p_cand) %*% t(S_mat_cand)))
+  V <-  median(diag(S_mat_cand %*% D_p_cand %*% Kinv %*% t(D_p_cand) %*% t(S_mat_cand)))
+  # V <- 1
   lp_sig <- -log(V) - log(1 + (init$sigma_2/(V*hyper$a_sigma))^2)
   logdetK <- as.numeric(determinant(K/init$sigma_2, logarithm = TRUE)$modulus)
-  
+
   if (init$z  == 1) {
-    k_free <- ncol(hyper$D_p)
-    val_3 <- -0.5 * (1/init$sigma_2) * tr(t(W_cand) %*% S_mat_cand %*% W_cand) +
-      logdetK  + lp_sig
+    val_3 <- -0.5 * (1/init$sigma_2) * trace_function_psi(W_cand, S_mat_cand) +
+      n*logdetK  + lp_sig
+    
+    # val_3 <- -0.5 * (1/init$sigma_2) * trace_function_psi(W_cand, S_mat_cand)  +
+    #    logdetK  + lp_sig
     log_lik_total <- -0.5 * val + val_2 + val_3
   }
-  else{
-    k_free <- ncol(hyper$D_p)
-    val_3 <- -0.5 * (1/init$sigma_2) * tr(t(init$psi) %*% w_mat %*%  init$psi) + sum(log(w)) - k_free*log(init$sigma_2) + lp_sig
-    log_lik_total <- -0.5 * val + val_2 + val_3
-  }
+  # else{
+  #   k_free <- ncol(hyper$D_p)
+  #   val_3 <- -0.5 * (1/init$sigma_2) * tr(t(init$psi) %*% w_mat %*%  init$psi) + sum(log(w)) - k_free*log(init$sigma_2) + lp_sig
+  #   log_lik_total <- -0.5 * val + val_2 + val_3
+  # }
   
   return(list(log_lik = log_lik_total, 
               mean = mean_cand, 

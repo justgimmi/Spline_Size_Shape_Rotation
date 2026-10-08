@@ -18,7 +18,7 @@ thinning  = 10
 par(mfrow = c(1, 3))
 # MCMC Sampler for all the parameters -----
 RB_MCMC <- function(total_iter, burnin, thinning, 
-                    X, init, hyper){
+                    X, init, hyper, plot_file = "mcmc.pdf"){
   # total_iter : --> total number of iterations for the sampler
   # burnin : --> burnin for the chain
   # thinning: --> how much thinning do we apply
@@ -54,26 +54,28 @@ RB_MCMC <- function(total_iter, burnin, thinning,
   dev.off()
   par(mfrow = c(1, 3))
   #init_env$z <- 1
-  z_temp <- numeric(thin)
+  # z_temp <- numeric(thin)
   for (i in 1:mcmc_iter) {
     
     for (j in 1:thin) {
       #print(j)
       hyper_env$t <- hyper_env$t + 1
       cli_progress_update(id = pbar, inc = 1)
-      sample_theta_logit_normal(init_env, hyper_env, X)
       #print(init_env$mean)
       sample_beta(init_env, hyper_env, X, k_l)
+      sample_theta_logit_normal(init_env, hyper_env, X)
       # sample_z(init_env, hyper_env, X)
-      sample_psi(init_env, hyper_env, X)
       sample_sigma2(init_env, hyper_env, X, burn = burn)
+      sample_psi(init_env, hyper_env, X)
+      #sample_sigma2_ig(init_env, hyper_env, X)
+      #sample_sigma2(init_env, hyper_env, X, burn = burn)
       # if (init_env$z == 1) {
       #   sample_psi(init_env, hyper_env, X)
       #   sample_sigma2(init_env, hyper_env, X, burn = burn)
       # }
       #sample_xi(init_env, hyper_env)
       hyper_env$log_lik <- log_density(init_env)
-      sample_phi(init_env, hyper_env, X, burn = burn)
+      #sample_phi(init_env, hyper_env, X, burn = burn)
       hyper_env$log_lik <- log_density(init_env)
       
       #print(init_env$mean)
@@ -121,7 +123,7 @@ RB_MCMC <- function(total_iter, burnin, thinning,
       # plot(X[,,1], asp = 1, pch = 21, bg = "black", main = "Observed Unit i")
       # lines(c(X[,1,1], X[1,1,1]), c(X[,2,1], X[1,2,1]), col = "brown", lwd = 2)
       #print(init_env$z)
-      z_temp[j] <- init_env$z
+      #z_temp[j] <- init_env$z
       if (i == 1 & j %% 100 == 0) {
         # cli_inform(paste0("\n[Burn-in - Iterazione globale: ", hyper$t, "]"))
         #print(hyper_env$a_aver_a/hyper_env$t)
@@ -131,10 +133,8 @@ RB_MCMC <- function(total_iter, burnin, thinning,
         # print(hyper_env$Eigen_vector_null%*%init_env$betas)
         # print(init_env$Sigma)
         # print(init_env$alphas)
-        print(init_env$sigma_2)
-        print(init_env$z)
-        print(mean(z_temp[1:j]))
         print(init_env$thetas)
+        print(init_env$C)
         #print(init_env$thetas_sorted)
         #print(init_env$lambdas)
         #print(init_env$alphas)
@@ -149,19 +149,15 @@ RB_MCMC <- function(total_iter, burnin, thinning,
         print(paste("sigma2", init_env$sigma_2))
         print(hyper_env$sigma_acc_cp/j)
         print(hyper_env$sigma_acc_ncp/j)
-        print(init_env$W)
-        #print(hyper_env$Sigma_sigma)
-        #print(hyper_env$lambda_sigma)
-        print(init_env$z)
-        X_mean <- init_env$mean
-        plot(X_mean, asp = 1, pch = 21, bg = "darkblue", main = "Latent mu")
-        lines(c(X_mean[,1], X_mean[1,1]), c(X_mean[,2], X_mean[1,2]), col = "blue", lwd = 2)
-        X_new_i <- init_env$mean_i[,,1]
-        plot(X_new_i, asp = 1, pch = 21, bg = "black", main = "Latent mu unit i")
-        lines(c(X_new_i[,1], X_new_i[1,1]), c(X_new_i[,2], X_new_i[1,2]), col = "brown", lwd = 2)
+        print(init_env$W[,,1])
+  
         
-        plot(X[,,1], asp = 1, pch = 21, bg = "black", main = "Observed Unit i")
-        lines(c(X[,1,1], X[1,1,1]), c(X[,2,1], X[1,2,1]), col = "brown", lwd = 2)
+        tryCatch(plot_status(init_env, hyper_env, X, plot_file, hyper_env$t, i_unit = 1),
+                 error = function(e) message("plot_status fallito: ", conditionMessage(e)))
+        tryCatch(plot_status(init_env, hyper_env, X, plot_file, hyper_env$t, i_unit = 10),
+                 error = function(e) message("plot_status fallito: ", conditionMessage(e)))
+        print(diag(hyper_env$S_mat %*% hyper_env$D_p %*% solve(t(hyper_env$D_p)%*%hyper_env$S_mat %*% hyper_env$D_p) %*% 
+                         t(hyper_env$D_p) %*% t(hyper_env$S_mat )))
       }
     
       
@@ -173,28 +169,8 @@ RB_MCMC <- function(total_iter, burnin, thinning,
     }
     
     if (i %% 50 == 0) {
-      # cli_inform(paste0("\n[Burn-in - Iterazione globale: ", hyper$t, "]"))
-      #print(hyper_env$a_aver_a/hyper_env$t)
-      # print(init$Sigma)
-      # print(init_env$tau)
-      # print(init_env$betas)
-      # print(hyper_env$Eigen_vector_null%*%init_env$betas)
-      # print(init_env$Sigma)
-      # print(init_env$alphas)
-      # print(init_env$thetas)
-      # print(init_env$lambdas)
-      # print(init_env$alphas)
-      # print(init_env$tau)
-      # print(init_env$Sigma)
-      X_mean <- init_env$mean
-      plot(X_mean, asp = 1, pch = 21, bg = "darkblue", main = "Estimated Mean")
-      lines(c(X_mean[,1], X_mean[1,1]), c(X_mean[,2], X_mean[1,2]), col = "blue", lwd = 2)
-      X_new_i <- init_env$mean_i[,,1]
-      plot(X_new_i, asp = 1, pch = 21, bg = "black", main = "estimated Conf for unit i")
-      lines(c(X_new_i[,1], X_new_i[1,1]), c(X_new_i[,2], X_new_i[1,2]), col = "brown", lwd = 2)
-      
-      plot(X[,,1], asp = 1, pch = 21, bg = "black", main = "estimated Conf for unit i")
-      lines(c(X[,1,1], X[1,1,1]), c(X[,2,1], X[1,2,1]), col = "brown", lwd = 2)
+      tryCatch(plot_status(init_env, hyper_env, X, plot_file, hyper_env$t),
+               error = function(e) message("plot_status fallito: ", conditionMessage(e)))
     }
     output$tau[i,] <- init_env$tau
     output$theta[i,] <- init_env$thetas
@@ -207,9 +183,11 @@ RB_MCMC <- function(total_iter, burnin, thinning,
     output$mean[i, ,] <- init_env$mean
     output$gammas[i, ] <- init_env$gammas
     output$phi[i,1] <- init_env$phi
-    output$psi[i,,] <- init_env$psi
+    # output$psi[i,,] <- init_env$psi
+    output$psi[[i]] <- init_env$psi
+    output$W[[i]] <- init_env$W
     output$sigma_2[i, ] <- init_env$sigma_2
-    output$z[i,] <- init_env$z
+    # output$z[i,] <- init_env$z
     #setTxtProgressBar(pb, value = i, title = "Ziocan")
     #
     
@@ -221,250 +199,43 @@ RB_MCMC <- function(total_iter, burnin, thinning,
   return(out)
   
 }
-# sam <- mat
-# max(diag(hyper_env$S_mat %*% hyper_env$D_p %*% Kinv %*% t(hyper_env$D_p) %*% t(hyper_env$S_mat)))
-# K <- t(hyper_env$D_p) %*% hyper_env$S_mat %*% hyper_env$D_p
-# Kinv <- chol2inv(chol(K))
-# w <- 1/diag(Kinv)
-# print(range(w))
-# print(range(diag(K)))   # confronta con w: se w << diag(K), la diagnosi è questa
-# 
-# 
-# K <- t(hyper_env$D_p) %*% hyper_env$S_mat %*% hyper_env$D_p   # k_free x k_free, bending energy nello spazio di psi
-# eig <- eigen(K, symmetric = TRUE)
-# ord <- order(eig$values)                   # crescente: autovalori piccoli = più lisci, per primi
-# keep <- ord[1:q]                            # le q direzioni più lisce
-# D_p_full %*% eig$vectors[, keep, drop = FALSE]   
-# 
-# B_gamma <- hyper_env$B_sim %*% hyper_env$C_bar   # k x Lgamma
-# tangent <- cbind(init_env$mean[,1] * B_gamma, init_env$mean[,2] * B_gamma)  # k x 2Lgamma, colonne = d(mu)/d(gamma_j)
-# 
-# # proietta le colonne di D_p sullo spazio tangente e guarda quanto "entrano"
-# P_tangent <- tangent %*% solve(t(tangent) %*% tangent, t(tangent))  # proiettore su span(tangent)
-# overlap <- diag(t(hyper_env$D_p) %*% P_tangent %*% hyper_env$D_p)  # per ogni colonna di D_p, quanta norma cade nello spazio tangente
-# print(overlap)  # valori vicini a 1 = quella direzione di psi è quasi completamente "duplicata" da gamma
-# 
-# 
-# 
-# 
-# 
-# check <- eval_log_lik_theta_joint(init_env$thetas, init_env, hyper_env, X)
-# cat("hyper$log_lik =", hyper_env$log_lik,
-#     " recomputed at current theta =", check$log_lik - check$val_3,
-#     " diff =", check$log_lik - check$val_3 - hyper_env$log_lik, "\n")
-# 
-# check <- eval_log_lik_theta_joint(init_env$thetas, init_env, hyper_env, X)
-# 
-# cat("mean diff       :", max(abs(check$mean       - init_env$mean)), "\n")
-# cat("S_mat diff      :", max(abs(check$S_mat      - hyper_env$S_mat)), "\n")
-# cat("C diff          :", max(abs(check$C          - init_env$C)), "\n")
-# cat("chol_c diff     :", max(abs(check$chol_c     - init_env$chol_c)), "\n")
-# cat("W diff          :", max(abs(check$W          - init_env$W)), "\n")
-# cat("mean_i diff (i=1):", max(abs(check$mean_i[,,1] - init_env$mean_i[,,1])), "\n")
-# cat("residual diff(i=1):", max(abs(check$residual[,,1] - init_env$residual[,,1])), "\n")
-# cat("Q_R used same object? ", identical(init_env$Q_R, init_env$Q_R), "\n")  # sanity
-# cat("log_lik diff    :", check$log_lik - check$val_3- hyper_env$log_lik, "\n")
-# 
-# 
-# 
-# colSums(init_env$W)
-# t(init_env$mean)%*%init_env
 
-
-
-load("Torino.RData")
-X <- sam$X
-# X <- X/100
-#X <- sam/100
-#X <- sam
-X <- sam
-X <- sam/100
-X_centered <- array(NA, dim = dim(X))
-
-
-for (i in 1:dim(X)[3]) {
-  X_centered[,,i] <- X[,,i] - matrix(colMeans(X[,,i]), nrow = dim(X)[1], ncol = 2, byrow = TRUE)
-}
-
-par(mfrow = c(1,1))
-#?procGPA
-gpa <- procGPA(X, scale = TRUE)
-
-mean_shape <- gpa$mshape
-
-theta_gpa <- atan2(mean_shape[,2], mean_shape[,1])
-theta_gpa <- ifelse(theta_gpa < 0, theta_gpa + 2*pi, theta_gpa)
-orders <- order(theta_gpa)
-X <- X[orders, ,]
-# angle of the first landmark
-#shift <- theta_gpa[1] - 0.01
-
-# R_shift <- matrix(
-#   c(cos(shift), -sin(shift),
-#     sin(shift),  cos(shift)),
-#   2, 2, byrow = TRUE
-# )
-# 
-# mean_shape <- mean_shape %*% R_shift
-gpa <- procGPA(X, scale = TRUE)
-
-mean_shape <- gpa$mshape
-plot(mean_shape)
-theta_init <- atan2(mean_shape[,2], mean_shape[,1])
-theta_init <- ifelse(theta_init < 0, theta_init + 2*pi, theta_init)
-
-# shift <- theta_init[1] - 0.01
-# 
-# R_shift <- matrix(
-#   c(cos(shift), -sin(shift),
-#     sin(shift),  cos(shift)),
-#   2, 2, byrow = TRUE
-# )
-# 
-# mean_shape <- mean_shape %*% R_shift
-# theta_init <- atan2(mean_shape[,2], mean_shape[,1])
-# theta_init <- ifelse(theta_init < 0, theta_init + 2*pi, theta_init)
-# theta_init
-
-#hyper$n_basis
-#ord <- order(theta_init)
-#theta_init <- theta_init[ord]
-mean_shape_ordered <- mean_shape
-mat_dist <- diag(0, nrow = length(theta_init), ncol = length(theta_init)) 
-mat_dist <- covariance_mat(mat_dist,theta_init)
-b_phi <- 2*max(mat_dist)/3
-#b_phi <- pi
-a_phi <- min(mat_dist[mat_dist != 0])/3
-b_phi <- 2*pi/3
-#a_phi <- pi/12
-hyper <- hyperparameters(1, 5e-4, 12, 3, width_theta = 1, m = 6, nu = 10,
-                         psi = diag(0.1, nrow = 2),n = dim(X)[3], a = 0.01, b = 0.01, a_phi = a_phi, b_phi = b_phi, X = X)
-# prova <- init_mu_star (X,n_basis = 30, degree = 3,
-#                          start   = "circle",
-#                          ridge   = 1e-1,
-#                          sigma0  = c(0.1, 0.1), phi0 = 0.5,
-#                          plot    = TRUE)
-# init <- prova$init
-# hyper <- prova$hyper
-par(mfrow = c(1,1))
-hyper$K_gamma2
-hyper$tau_acc
-hyper$S_mat
-hyper$a_sigma
-
-# X_new <- array(NA, dim = dim(X))
-# for(i in 1:dim(X)[3]) {
-#   X_new[,,i] <- X[orders, , i] # Ordiniamo i landmark per il sarago i
-# }
-
-plot(X[,,1])
-for (i in 1:18) {
-  text(X[i,1,1], X[i, 2, 1], i)
-
-}
-# 
-# plot(X_new[,,1])
-# for (i in 1:18) {
-#   text(X_new[i,1,1], X_new[i, 2, 1], i)
-#   
-# }
-X_new <- X
-#X <- X_new
-#theta_init <- sort(theta_init)
-
-r_emp <- sqrt(mean_shape_ordered[,1]^2 + mean_shape_ordered[,2]^2)
-log_r_emp <- log(r_emp)
-B_init <- Basis_Construction(theta_init,12, 3)
-
-beta_init <- solve(t(B_init) %*% B_init + 1e-1 * diag(ncol(B_init)), t(B_init) %*% log_r_emp)
-
-sum(beta_init)
-gamma_init <- solve(
-  t(hyper$C_bar) %*% hyper$C_bar
-) %*%
-  t(hyper$C_bar) %*%
-  beta_init
-
-#gamma_init_ridotto <- as.vector(hyper$A_bar %*% beta_init)
-beta_init <- as.vector(hyper$C_bar %*% gamma_init)
-sum(beta_init)
-r_pure <- as.numeric(exp(B_init %*% beta_init))
-mu_pure <- cbind(r_pure * cos(theta_init), r_pure * sin(theta_init))
-mu_pure_centered <- scale(mu_pure, scale = FALSE)
-
-plot(mu_pure)
-alpha_sync  <- numeric(dim(X)[3])
-lambda_sync <- numeric(dim(X)[3])
-eta_sync    <- matrix(NA, nrow = dim(X)[3], ncol = 2)
-
-for (i in 1:dim(X)[3]) {
-  X_i_centered  <- scale(X[,,i], scale = FALSE)
-  eta_sync[i, ] <- colMeans(X[,,i])
-  
-  M <- t(X_i_centered) %*% mu_pure_centered
-  svd_decomp <- svd(M)
-  
-  # 2. Derive the optimal rotation matrix mapping directly from MU -> X_i
-  # We use V %*% t(U) instead of U %*% t(V)
-  R_i <- svd_decomp$v %*% t(svd_decomp$u)
-  
-  # 3. Extract the rotation angle from the correct matrix orientation
-  lambda_sync[i] <- atan2(R_i[2,1], R_i[1,1])
-  
-  # 4. Update the scaling factor calculation
-  # We project mu into the space of X_i. Since they now align perfectly, 
-  # this dot product is guaranteed to be highly positive.
-  alpha_sync[i]  <- sum(X_i_centered * (mu_pure_centered %*% R_i)) / sum(mu_pure_centered^2)
-}
-
-lambda_sync <- ifelse(lambda_sync < 0, lambda_sync + 2*pi, lambda_sync)
-#lambda_sync <- ifelse(lambda_sync < 0, lambda_sync + 2*pi, lambda_sync)
-
-init_residuals <- array(NA, dim = c(dim(X)[1], 2, dim(X)[3]))
-for (i in 1:dim(X)[3]) {
-  # Costruisci la rotazione iniziale del pesce i
-  R_i <- matrix(c(cos(lambda_sync[i]), -sin(lambda_sync[i]),
-                  sin(lambda_sync[i]),  cos(lambda_sync[i])), byrow = TRUE, nrow = 2)
-  # Configurazione media stimata ruotata, scalata e traslata
-  mean_i <- alpha_sync[i] * (mu_pure %*% R_i) + matrix(eta_sync[i,], nrow = dim(X)[1], ncol = 2, byrow = TRUE)
-  init_residuals[,,i] <- X[,,i] - mean_i
-}
-
-# Ricava la matrice di covarianza 2x2 reale dei residui iniziali
-# init_residuals is k_l x 2 x n from your GPA-based initialization
-S_hat <- matrix(0, 2, 2)
-for (i in 1:dim(X)[3]) {
-  S_hat <- S_hat + t(init_residuals[,,i]) %*% init_residuals[,,i]
-}
-S_hat <- S_hat / (dim(X)[3] * dim(X)[1])   # average per-landmark-per-subject outer product
-
-nu_prior <- 4
-psi <- (nu_prior - 2 - 1) * S_hat   # so that E[Sigma_e] = S_hat
-#Sigma_init <- diag(0.001, nrow = 2)
-#lambda_init <- rep(0, 120)
-init <- init_param(c(0.1, 0.1),lambda_sync, theta_init,beta_init,
-                   S_hat,
-                   eta_sync,alpha_sync, gamma_init, phi = 0.5, n = dim(X)[3])
 
 # hyper <- hyperparameters(2, 0.5, 8, 3, width_theta = 1, m = 6, nu = 10,
 #                          psi = psi,n = dim(X)[3], a = 0.01, b = 0.01, a_phi = a_phi, b_phi = b_phi, X = X)
 X <- sam$X
 X <- mat_not_demented
+X <- mat_demented
 X <- final_array
-prova <- init_mu_star (X,n_basis = 12, degree = 3,
-                       start   = "gpa",
+prova <- init_mu_star (X,n_basis = 6, degree = 3,
+                       start   = "circle",
                        ridge   = 1e-1,
                        sigma0  = c(0.1, 0.1),
                        plot    = TRUE)
+
+prova <- init_mu_star (X,n_basis = 6, degree = 3, start = "gpa", ridge   = 1e-3, plot = TRUE)
 init <- prova$init
 hyper <- prova$hyper
+
+X <- prova$X
+hyper$a_sigma
+
+hyper$nu
+init$Sigma
+init$sigma_2
+init$C
+hyper$Sigma_a
 X <- prova$X
 hyper$b_phi
+hyper$Sigma_eta_new
+hyper$a_sigma
 save(sam, X, hyper, init, file = "No_warp.RData")
 save(sam, X, hyper, init, file = "warp_indep.RData")
 save(sam, X, hyper, init, file = "warp.RData")
 save(X, hyper, init, file = "No_Demente.RData")
+save(X, hyper, init, file = "Demente.RData")
 save(X, hyper, init, file = "foglie.RData")
+load("No_Demente.RData")
 load("No_warp.RData")
 hyper$log_lik
 hyper$K
@@ -493,10 +264,11 @@ hyper$a_sigma
 init$Z
 tic()
 par(mfrow = c(1, 3))
-MCMC_samp <- RB_MCMC(total_iter = 1e5, burnin = 30000, thinning  = 10, X = X, 
+MCMC_samp <- RB_MCMC(total_iter = 2e5, burnin = 50000, thinning  = 10, X = X, 
                      init = init, hyper = hyper)
 toc()
 hyper$b_phi
+init$mean
 mean(MCMC_samp$output$z)
 plot(MCMC_samp$output$z)
 gcinfo(FALSE)

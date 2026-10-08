@@ -11,16 +11,17 @@ eval_log_lik_beta <- function(gamma_cand, init, hyper, X, k_l){
   S_mat_cand <- S_mat_constructor(hyper$S_mat, mean)
   D_p_cand <- D_p_constructor(mean, init$thetas, hyper$C_bar%*%gamma_cand, r, hyper$n_basis, hyper$degree, D_p_prev = hyper$D_ref)
   #D_p_cand <- hyper$D_p
-  W_cand <- D_p_cand %*%init$psi
   #W_cand <- init$W
   mean_i <- array(NA, dim = c(k_l, 2, n))
   residual <- array(NA, dim = c(2, 2, n))
   
   k_free <- ncol(hyper$D_p)
+  W_cand <- array(NA, dim = dim(init$W))
   for (i in 1:n) { # compute rotation matrix 
+    W_cand[,,i] <- D_p_cand %*%init$psi[,,i]
 
     eta_matrix <- matrix(init$eta[i,], nrow = k_l, ncol = 2, byrow = T)
-    mean_i[,,i] <- init$alphas[i]*(mean + S_mat_cand %*% W_cand)%*%init$R[,,i] + eta_matrix # compute the mean configuration for every unit
+    mean_i[,,i] <- init$alphas[i]*(mean + S_mat_cand %*% W_cand[,,i])%*%init$R[,,i] + eta_matrix # compute the mean configuration for every unit
     #mean_i[,,i] <- init$alphas[i]*(mean + project_warp(S_mat_cand, W_cand, init$thetas))%*%init$R[,,i] + eta_matrix
     
     res <- backsolve(init$chol_c,X[,,i] - mean_i[,,i],  transpose = TRUE)
@@ -38,25 +39,30 @@ eval_log_lik_beta <- function(gamma_cand, init, hyper, X, k_l){
   K <- crossprod(D_p_cand, S_mat_cand %*% D_p_cand)
   Lk <- tryCatch(chol(K), error = function(e) NULL)
   if (is.null(Lk)) return(list(log_lik = -Inf, val_3 = 0))
+  dL <- diag(Lk)
+  if (max(dL) / min(dL) > 1e7) return(list(log_lik = -Inf, val_3 = 0))
   Kinv    <- chol2inv(Lk)
   w    <- 1 / diag(Kinv)
   w_mat <- diag(w, nrow = length(w), ncol = length(w))
-  V <-  max(diag(S_mat_cand %*% D_p_cand %*% Kinv %*% t(D_p_cand) %*% t(S_mat_cand)))
+  V <-  median(diag(S_mat_cand %*% D_p_cand %*% Kinv %*% t(D_p_cand) %*% t(S_mat_cand)))
+  # V <- 1
   lp_sig <- -log(V) - log(1 + (init$sigma_2/(V*hyper$a_sigma))^2)
   logdetK <- as.numeric(determinant(K/init$sigma_2, logarithm = TRUE)$modulus)
   
   if (init$z == 1) {
     k_free <- ncol(hyper$D_p)
-    val_3 <- -0.5 * (1/init$sigma_2) * tr(t(W_cand) %*% S_mat_cand %*% W_cand) +
-      logdetK + lp_sig
+    val_3 <- -0.5 * (1/init$sigma_2) * trace_function_psi(W_cand, S_mat_cand) +
+      n*logdetK + lp_sig
+    # val_3 <- -0.5 * (1/init$sigma_2) * trace_function_psi(W_cand, S_mat_cand)+
+    #    logdetK + lp_sig
     log_lik <- -0.5 * val + val_2 + val_3
   }
-  else{
-    k_free <- ncol(hyper$D_p)
-    val_3 <- -0.5 * (1/init$sigma_2) * tr(t(init$psi) %*% w_mat %*% init$psi) + sum(log(w)) - k_free*log(init$sigma_2) + lp_sig
-      
-    log_lik <- -0.5 * val + val_2 + val_3
-  }
+  # else{
+  #   k_free <- ncol(hyper$D_p)
+  #   val_3 <- -0.5 * (1/init$sigma_2) * tr(t(init$psi) %*% w_mat %*% init$psi) + sum(log(w)) - k_free*log(init$sigma_2) + lp_sig
+  #     
+  #   log_lik <- -0.5 * val + val_2 + val_3
+  # }
   return(list(log_lik =  log_lik, residual = residual, mean = mean, mean_i = mean_i,
               S_mat = S_mat_cand, W = W_cand, D_p = D_p_cand, val_3 = val_3, r = r))
 }

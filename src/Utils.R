@@ -326,24 +326,25 @@ D_p_raw <- function(mu, thetas, betas, r, n_basis, degree, D_ref = NULL) {
   k  <- nrow(mu)
   fp <- as.numeric(Basis_Construction(thetas, n_basis, degree, derivatives = 1) %*% betas)
   r  <- as.numeric(r)
-  A  <- rbind(1, t(mu),
-              t(r * fp * cos(thetas) - mu[, 2]),
-              t(r * fp * sin(thetas) + mu[, 1]))          # 5 x k
+  # A  <- rbind(1, t(mu),
+  #             t(r * fp * cos(thetas) - mu[, 2]),
+  #             t(r * fp * sin(thetas) + mu[, 1]))
+  A  <- rbind(1, t(mu))          # 3 x k
   sv <- svd(A, nu = 0, nv = k)
   # if (sv$d[5] < 1e-8 * sv$d[1]) stop("D_p_raw: vincoli quasi dipendenti")
-  D  <- sv$v[, 6:k, drop = FALSE]
-  if (is.null(D_ref)) return(D)
-  s  <- svd(crossprod(D, D_ref))
-  D %*% (s$u %*% t(s$v))
+  D  <- sv$v[, 4:k, drop = FALSE]
+  # if (is.null(D_ref)) return(D)
+  # s  <- svd(crossprod(D, D_ref))
+  # D %*% (s$u %*% t(s$v))
 }
 
 D_p_constructor <- function(mu, thetas, betas, r, n_basis, degree, D_p_prev = NULL) {
   D_raw <- D_p_raw(mu, thetas, betas, r, n_basis, degree)
-  if (is.null(D_p_prev)) return(D_raw)
-  M  <- crossprod(D_p_prev, D_raw)
-  sm <- svd(M)
-  Rot <- sm$v %*% t(sm$u)
-  D_raw %*% Rot
+  # if (is.null(D_p_prev)) return(D_raw)
+  # M  <- crossprod(D_p_prev, D_raw)
+  # sm <- svd(M)
+  # Rot <- sm$v %*% t(sm$u)
+  # D_raw %*% Rot
 }
 covariance_mat <- function(mat, thetas){
   # thetas: vector of angles
@@ -357,7 +358,7 @@ covariance_mat <- function(mat, thetas){
       mat[j, i] <- mat[i, j]
     }
   }
-  return(mat/(4*pi))
+  return(mat)
 }
 
 init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, gammas, phi, n){
@@ -387,21 +388,23 @@ init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, gammas, 
   param$residual <-  array(NA, dim = c(2, 2, n)) #deterministic 
   param$mat_dist <- diag(0, nrow = length(thetas), ncol = length(thetas)) 
   param$mat_dist <- covariance_mat(param$mat_dist, thetas)
-  param$C <- exp(-param$mat_dist/phi) # landmark covariance matrix
+  # param$C <- exp(-param$mat_dist/phi) # landmark covariance matrix
+  param$C <- diag(1, nrow = length(thetas), ncol = length(thetas)) 
   param$chol_c <- chol((param$C)) # cholesky decompoition of the covariance matrix -->
   # R is dumb so it is upper-triangular
   param$phi <- phi
   
   #param$psi <- matrix(rnorm(2*length(thetas)), nrow = length(thetas), ncol = 2)
-  param$sigma_2 <- 1e-5
+  param$sigma_2 <- 1e-3
   param$z <- 1
   param$chi <- 0.1
+  param$psi <- array(NA, dim = c(length(thetas) - 3, 2, n))
+  param$W <- array(NA, dim = c(length(thetas), 2, n))
   return(param)
   
 }
 
-hyperparameters <- function(a_tau, b_tau, n_basis, degree,
-                            width_theta = pi/4, m = 8, nu, psi, n, a, b, Sigma_eta = diag(1000, nrow = 2, ncol = 2),
+hyperparameters <- function(a_tau, b_tau, n_basis, degree, nu, psi, n, a, b, Sigma_eta,
                             tol = 1e-10,a_phi,b_phi,X){
   
   hyper <- list()
@@ -449,15 +452,12 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   hyper$K_gamma2 <- t(hyper$C_bar) %*% hyper$K2 %*% hyper$C_bar
   hyper$lambda_tau <- (2.38^2)/2
   hyper$mu_tau <- matrix(0, nrow = 2)
-  hyper$Sigma_tau <- diag(1e-4, nrow = 2)
+  hyper$Sigma_tau <- diag(0.1, nrow = 2)
   hyper$a_opts <- 0.234
   hyper$tau_acc <- 0
   
   # Theta block -----
-  hyper$width_theta <- width_theta
-  hyper$m <- m # it is used to have a slice of size w*m
-  # Lambda block ----
-  hyper$width_lambda <- width_theta
+
   hyper$log_lik <- 0
   k_l <- dim(X)[1]
   
@@ -470,7 +470,7 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   # Alphas block -----
   hyper$lambda_a <- matrix(2.38^2, nrow = n)
   hyper$mu_a <- matrix(0, nrow = n)
-  hyper$Sigma_a <- matrix(1e-4, nrow = n)
+  hyper$Sigma_a <- matrix(0.1, nrow = n)
   #hyper$L_a <- chol(hyper$lambda_a*hyper$Sigma_a)
   hyper$alpha_acc <- matrix(0, nrow = n)
   hyper$gamma_a <- 1
@@ -490,7 +490,7 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   
   hyper$lambda_lambda <- matrix(2.38^2, nrow = n)
   hyper$mu_lambda <- matrix(0, nrow = n)
-  hyper$Sigma_lambda <- matrix(1e-4, nrow = n)
+  hyper$Sigma_lambda <- matrix(0.1, nrow = n)
   hyper$gamma_lambda <- 1
   hyper$lambda_opt <- 0.44
   hyper$lambda_acc <- matrix(0, nrow = n)
@@ -498,7 +498,7 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   # phi block
   hyper$lambda_phi <- 2.38^2
   hyper$mu_phi <- 0
-  hyper$Sigma_phi <- 1e-4
+  hyper$Sigma_phi <- 0.1
   #hyper$L_a <- chol(hyper$lambda_a*hyper$Sigma_a)
   hyper$alpha_phi <- 0
   hyper$gamma_phi <- 1
@@ -509,21 +509,22 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree,
   
   
   hyper$S_mat <- matrix(0, nrow = k_l, ncol = k_l)
-  hyper$a_sigma <- 1e-4
+  hyper$a_sigma <- 1e-5
   hyper$lambda_sigma_cp <- 2.38^2
-  hyper$Sigma_sigma_cp  <- 1e-8
+  hyper$Sigma_sigma_cp  <- 0.1
   hyper$mu_sigma_cp     <- 0
   hyper$sigma_acc_cp    <- 0
   
   hyper$lambda_sigma_ncp <- 2.38^2
-  hyper$Sigma_sigma_ncp  <- 1e-8
+  hyper$Sigma_sigma_ncp  <- 0.1
   hyper$mu_sigma_ncp     <- 0
   hyper$sigma_acc_ncp    <- 0
   
   
   hyper$a_chi <- 2
   hyper$b_chi <- 40
-  
+  hyper$a_s2 <- 1e-3
+  hyper$b_s2 <- 1e-3
   return(hyper)
 }
 
@@ -534,12 +535,12 @@ g_phi <- function(phi_star, a_phi, b_phi){
   
 }
 
-project_warp <- function(S_mat, W, thetas) {
-  #t_mat <- cbind(-sin(thetas), cos(thetas))
-  S_mat %*% W
-  #s <- rowSums(Delta * t_mat)
-  #s * t_mat   # k x 2, row h = s_h * t_h
-}
+# project_warp <- function(S_mat, W, thetas) {
+#   #t_mat <- cbind(-sin(thetas), cos(thetas))
+#   S_mat %*% W
+#   #s <- rowSums(Delta * t_mat)
+#   #s * t_mat   # k x 2, row h = s_h * t_h
+# }
 
 g_phi_star <- function(phi, a_phi, b_phi){
   app <- (phi - a_phi)/(b_phi - a_phi)
@@ -547,6 +548,7 @@ g_phi_star <- function(phi, a_phi, b_phi){
   return(phi_star)
   
 }
+
 create_output <- function(mcmc_iter, k_l, n, L){
   output <- list()
   output$tau <- matrix(NA, nrow = mcmc_iter, ncol = 2)
@@ -560,11 +562,18 @@ create_output <- function(mcmc_iter, k_l, n, L){
   output$mean_i <- list()
   output$mean <- array(NA, c(mcmc_iter, k_l, 2))
   output$phi <- matrix(NA, nrow = mcmc_iter, ncol =1)
-  output$psi <- array(NA, dim = c(mcmc_iter, k_l - 5, 2))
+  output$psi <- list()
+  output$W <- list()
+  # output$psi <- array(NA, dim = c(mcmc_iter, k_l - 5, 2))
   output$sigma_2 <- matrix(NA, nrow = mcmc_iter, ncol = 1)
-  output$z <- matrix(NA, nrow = mcmc_iter, ncol = 1)
+  #output$z <- matrix(NA, nrow = mcmc_iter, ncol = 1)
   return(output)
 }
+
+
+
+
+
 
 mean_constructor <- function(n_basis, degree, init, hyper, X){
   # n_basis --> number of internal knots
@@ -591,19 +600,26 @@ mean_constructor <- function(n_basis, degree, init, hyper, X){
     U_prec <- chol(V)
   }
     # k - 3
+  # z_raw <- matrix(rnorm(2*k_free), k_free, 2)
+  # init$psi <-  matrix(backsolve(U_prec, z_raw), nrow = k_free, ncol = 2)
+  # 
+  # #init$psi <- matrix(0, nrow = k_free, ncol = 2 )
+  # 
+  # init$W <- hyper$D_p %*% init$psi
   z_raw <- matrix(rnorm(2*k_free), k_free, 2)
-  init$psi <-  matrix(backsolve(U_prec, z_raw), nrow = k_free, ncol = 2)
-  
-  #init$psi <- matrix(0, nrow = k_free, ncol = 2 )
-  
-  init$W <- hyper$D_p %*% init$psi
-  
+  app <- matrix(backsolve(U_prec, z_raw), nrow = k_free, ncol = 2)
   for (i in 1:n) { # compute rotation matrix 
+    z_raw <- matrix(rnorm(2*k_free), k_free, 2)
+    init$psi[,,i] <-  matrix(backsolve(U_prec, z_raw), nrow = k_free, ncol = 2)
+    # init$psi[,,i] <- app
+    #init$psi <- matrix(0, nrow = k_free, ncol = 2 )
+    
+    init$W[,,i] <- hyper$D_p %*% init$psi[,,i]
     init$R[,,i] <- matrix(c(cos(init$lambdas[i]), -sin(init$lambdas[i]), 
                                   sin(init$lambdas[i]), cos(init$lambdas[i])), 
                                 byrow = T, nrow = 2, ncol = 2)
     eta_matrix <- matrix(init$eta[i,], nrow = length(init$thetas), ncol = 2, byrow = T)
-    init$mean_i[,,i] <- init$alphas[i]*(init$mean + hyper$S_mat%*%init$W)%*%init$R[,,i] + eta_matrix # compute the mean configuration for every unit
+    init$mean_i[,,i] <- init$alphas[i]*(init$mean + hyper$S_mat%*%init$W[,,i])%*%init$R[,,i] + eta_matrix # compute the mean configuration for every unit
     #init_param$mean_i[,,i] <- init_param$alphas[i]*(init_param$mean + project_warp(hyper$S_mat, init_param$W, init_param$thetas))%*%init_param$R[,,i] +
     #  eta_matrix # compute the mean configuration for every unit
     
@@ -617,22 +633,46 @@ mean_constructor <- function(n_basis, degree, init, hyper, X){
   Kinv <- chol2inv(chol(K))
   w    <- 1 / diag(Kinv)
   w_mat <- diag(w, nrow = k_free)
-  V <-  max(diag(hyper$S_mat %*% hyper$D_p %*% solve(K) %*% t(hyper$D_p) %*% t(hyper$S_mat)))
+  V <-  median(diag(hyper$S_mat %*% hyper$D_p %*% solve(K) %*% t(hyper$D_p) %*% t(hyper$S_mat)))
+  # V <- 1
   lp_sig <- -log(V) - log(1 + (init$sigma_2/(V*hyper$a_sigma))^2)
   logdetK <- as.numeric(determinant(K, logarithm = TRUE)$modulus)
   if (init$z == 1) {
-    hyper$traces <- -0.5 * (1/init$sigma_2) * tr(t(init$W) %*% hyper$S_mat %*% init$W) +
-      logdetK - k_free*log(init$sigma_2) + lp_sig
-  }
-  else{
+    hyper$traces <- -0.5 * (1/init$sigma_2) * trace_function_psi(init$W, hyper$S_mat) +
+      n*(logdetK - k_free*log(init$sigma_2)) + lp_sig
     
-    hyper$traces <- -0.5 * (1/init$sigma_2) * sum(init$psi * (w * init$psi)) + sum(log(w)) - k_free*log(init$sigma_2) + lp_sig
+    # hyper$traces <- -0.5 * (1/init$sigma_2) *  trace_function_psi(init$W, hyper$S_mat) +
+    #   logdetK - k_free*log(init$sigma_2) + lp_sig
   }
+  # else{
+  #   
+  #   hyper$traces <- -0.5 * (1/init$sigma_2) * sum(init$psi * (w * init$psi)) + sum(log(w)) - k_free*log(init$sigma_2) + lp_sig
+  # }
   hyper$D_ref <- D_p_raw(mean, init$thetas, init$betas, init$r, n_basis, degree)
   
   # return(init_param)
 }
 
+trace_function_psi <- function(W, S_mat){
+  val <- 0
+  n <- dim(W)[3]
+  #n <- 1
+  for (i in 1:n) {
+    val <- val + tr(t(W[,,i]) %*% S_mat %*% W[,,i])
+    
+  }
+  return(val)
+}
+
+trace_function_psi_K <- function(psi, K){
+  val <- 0
+  n <- dim(psi)[3]
+  for (i in 1:n) {
+    val <- val + tr(t(psi[,,i]) %*% K %*% psi[,,i])
+    
+  }
+  return(val)
+}
 
 log_density <- function(init){
   val <- sum(init$Q_R[1,1,] * init$residual[1,1,] +
@@ -690,118 +730,128 @@ sample_posterior_predictive <- function(output_mcmc, subject_idx) { # Sample fro
   return(X_pred)
 }
 
-
-
+## enforce a minimum cyclic gap, keeping order and total 2*pi
+spread_angles <- function(theta, g_min){
+  k <- length(theta)
+  if (k * g_min >= 2 * pi) stop("min gap too large for k landmarks")
+  g <- diff(c(theta, theta[1] + 2 * pi))            # k cyclic gaps (g[k] = wrap-around gap)
+  for (it in 1:100) {
+    small <- g < g_min
+    if (!any(small)) break
+    deficit <- sum(g_min - g[small])
+    excess  <- g[!small] - g_min
+    g[small]  <- g_min
+    g[!small] <- g[!small] - deficit * excess / sum(excess)   # take it from the large gaps
+  }
+  th <- theta[1] + c(0, cumsum(g[-k]))
+  s  <- (th[1] + th[k] - 2 * pi) / 2                 # shift so that 0 < th[1] and th[k] < 2*pi
+  th - s
+}
 
 init_mu_star <- function(X,
-                         n_basis = 12, degree = 3, nu = 10, m = 6,
+                         n_basis = 12, degree = 3,
+                         nu      = 4,
+                         a_tau   = 1, b_tau = 5e-4,
                          start   = c("gpa", "circle"),
                          ridge   = 1e-1,
-                         sigma0  = c(0.1, 0.1),
+                         tau0    = c(0.1, 0.1), phi0 = NULL,
+                         Sigma_eta = diag(1000, 2),
+                         min_gap_frac = 0.25,          ## NEW: min gap = frac * (2*pi/k)
                          plot    = TRUE) {
-  # Starting values for the MCMC. Two options:
-  #  "gpa"    : reasoned start, mu* fitted (ridge-penalised) to the GPA mean shape
-  #  "circle" : overdispersed start, mu* = circle (log-radius spline = 0)
-  # Returns the angle-ordered X, which must be used in the sampler.
   start <- match.arg(start)
+  if (nu <= 3) stop("nu must be > 3 for E[Sigma] to exist")
   k <- dim(X)[1]; n <- dim(X)[3]
   Rot <- function(l) matrix(c(cos(l), -sin(l), sin(l), cos(l)), 2, byrow = TRUE)
   ang <- function(M) atan2(M[, 2], M[, 1]) %% (2 * pi)
   
-  ## 1. order landmarks by angle of the GPA mean, then re-run GPA
+  ## 1. order landmarks by the GPA angles, rerun GPA, fix a possible cyclic shift
   X          <- X[order(ang(shapes::procGPA(X, scale = TRUE)$mshape)), , ]
   mean_shape <- shapes::procGPA(X, scale = TRUE)$mshape
-  theta      <- ang(mean_shape)
-  if (is.unsorted(theta))
-    warning("Angles not sorted after the second GPA (cyclic shift?): check landmark order.")
+  theta_gpa  <- ang(mean_shape)
+  if (is.unsorted(theta_gpa)) {
+    s <- which.min(theta_gpa); o <- c(s:k, seq_len(s - 1))
+    X <- X[o, , ]; mean_shape <- mean_shape[o, ]; theta_gpa <- theta_gpa[o]
+    if (is.unsorted(theta_gpa))
+      stop("Angular order != landmark order around the GPA centroid (mean shape not star-shaped?)")
+  }
   
-  ## 2. hyperparameters (built twice: psi needs S_hat, which needs C_bar)
-  D     <- covariance_mat(diag(0, k), theta)
-  a_phi <- min(D[D != 0]) / 3
+  ## 1b. minimum gap between consecutive angles
+  g_min <- min_gap_frac * 2 * pi / k
+  theta <- spread_angles(theta_gpa, g_min)
+  moved <- max(abs(theta - theta_gpa))
   
-  #b_phi <- 2*max(D)/3
-  #b_phi <- pi
-  b_phi <- 2*pi/3
-  #a_phi <- pi/12
-  
-  #b_phi <- 2 * pi / 3
+  ## 2. one single hyper (C_bar does not depend on psi); phi bounds from the spread angles
+  Dm    <- covariance_mat(diag(0, k), theta)
+  a_phi <- min(Dm[Dm != 0]) / 3                      # now >= g_min / 3
+  b_phi <- 2 * pi / 3
+  if (is.null(phi0)) phi0 <- (a_phi + b_phi) / 2
   build_hyper <- function(psi)
-    hyperparameters(1, 5e-4, n_basis, degree, width_theta = 1, m = m, nu = nu,
-                    psi = psi, n = n, a = 0.01, b = 0.01,
+    hyperparameters(a_tau, b_tau, n_basis, degree, nu = nu, psi = psi, n = n,
+                    a = 0.01, b = 0.01, Sigma_eta = Sigma_eta,
                     a_phi = a_phi, b_phi = b_phi, X = X)
-  hyper <- build_hyper(diag(0.1, 2))
+  hyper <- build_hyper(diag(1e-5, 2))
   
-  ## 3. mu*: beta = C_bar %*% gamma
-  B <- Basis_Construction(theta, n_basis, degree)
+  ## 3. mu*: fit log r at the GPA angles, evaluate the curve at the spread angles
+  B_fit <- Basis_Construction(theta_gpa, n_basis, degree)   ## NEW: fit where the radii were observed
+  B     <- Basis_Construction(theta,     n_basis, degree)   ##      evaluate at the angles used by mu*
   if (start == "gpa") {
     log_r <- log(sqrt(rowSums(mean_shape^2)))
-    beta  <- solve(crossprod(B) + ridge * diag(ncol(B)), crossprod(B, log_r))
-    gamma <- solve(crossprod(hyper$C_bar), crossprod(hyper$C_bar, beta))
+    beta0 <- solve(crossprod(B_fit) + ridge * diag(ncol(B_fit)), crossprod(B_fit, log_r))
+    gamma <- solve(crossprod(hyper$C_bar), crossprod(hyper$C_bar, beta0))
   } else {
     gamma <- rep(0, ncol(hyper$C_bar))
   }
   beta <- as.vector(hyper$C_bar %*% gamma)
   r    <- as.numeric(exp(B %*% beta))
-  mu   <- scale(cbind(r * cos(theta), r * sin(theta)), scale = FALSE)
+  mu   <- cbind(r * cos(theta), r * sin(theta))
+  mu_c <- scale(mu, scale = FALSE)
+  cm   <- attr(mu_c, "scaled:center")
   
-  ## 4. per-specimen similarity parameters by Procrustes onto mu*
-  alpha_sync  <- numeric(dim(X)[3])
-  lambda_sync <- numeric(dim(X)[3])
-  eta_sync    <- matrix(NA, nrow = dim(X)[3], ncol = 2)
-  
-  for (i in 1:dim(X)[3]) {
-    X_i_centered  <- scale(X[,,i], scale = FALSE)
-    eta_sync[i, ] <- colMeans(X[,,i])
-    
-    M <- t(X_i_centered) %*% mu
-    svd_decomp <- svd(M)
-    
-    # 2. Derive the optimal rotation matrix mapping directly from MU -> X_i
-    # We use V %*% t(U) instead of U %*% t(V)
-    R_i <- svd_decomp$v %*% t(svd_decomp$u)
-    
-    # 3. Extract the rotation angle from the correct matrix orientation
-    lambda_sync[i] <- atan2(R_i[2,1], R_i[1,1])
-    
-    # 4. Update the scaling factor calculation
-    # We project mu into the space of X_i. Since they now align perfectly, 
-    # this dot product is guaranteed to be highly positive.
-    alpha_sync[i]  <- sum(X_i_centered * (mu %*% R_i)) / sum(mu^2)
+  ## 4. similarity per subject
+  alpha <- lambda <- numeric(n); eta <- matrix(NA, n, 2); refl <- logical(n)
+  for (i in 1:n) {
+    Xc <- scale(X[, , i], scale = FALSE)
+    s  <- svd(crossprod(Xc, mu_c))
+    Ri <- s$v %*% t(s$u)
+    if (det(Ri) < 0) { refl[i] <- TRUE; s$u[, 2] <- -s$u[, 2]; Ri <- s$v %*% t(s$u) }
+    lambda[i] <- atan2(Ri[2, 1], Ri[1, 1]) %% (2 * pi)
+    alpha[i]  <- sum(Xc * (mu_c %*% Ri)) / sum(mu_c^2)
+    eta[i, ]  <- colMeans(X[, , i]) - alpha[i] * as.vector(cm %*% Ri)
   }
+  if (any(refl))
+    warning(sum(refl), " subject(s) are mirror images of the mean: ",
+            paste(which(refl), collapse = ", "))
   
-  lambda_sync <- ifelse(lambda_sync < 0, lambda_sync + 2*pi, lambda_sync)
-  #lambda_sync <- ifelse(lambda_sync < 0, lambda_sync + 2*pi, lambda_sync)
-  
-  init_residuals <- array(NA, dim = c(dim(X)[1], 2, dim(X)[3]))
-  for (i in 1:dim(X)[3]) {
-    # Costruisci la rotazione iniziale del pesce i
-    R_i <- matrix(c(cos(lambda_sync[i]), -sin(lambda_sync[i]),
-                    sin(lambda_sync[i]),  cos(lambda_sync[i])), byrow = TRUE, nrow = 2)
-    # Configurazione media stimata ruotata, scalata e traslata
-    mean_i <- alpha_sync[i] * (mu %*% R_i) + matrix(eta_sync[i,], nrow = dim(X)[1], ncol = 2, byrow = TRUE)
-    init_residuals[,,i] <- X[,,i] - mean_i
-  }
+  ## 5. S_hat in the mu* frame
   S_hat <- matrix(0, 2, 2)
-  for (i in 1:dim(X)[3]) {
-    S_hat <- S_hat + t(init_residuals[,,i]) %*% init_residuals[,,i]
+  for (i in 1:n) {
+    Ri <- Rot(lambda[i])
+    E  <- X[, , i] - (alpha[i] * (mu %*% Ri) + matrix(eta[i, ], k, 2, byrow = TRUE))
+    S_hat <- S_hat + crossprod((E %*% t(Ri)) / alpha[i])
   }
-  S_hat <- S_hat / (dim(X)[3] * dim(X)[1])   # average per-landmark-per-subject outer product
+                     # E[Sigma] = Sigma_target
+  S_hat <- S_hat / (n * k * 100)
+  #hyper <- build_hyper((100 - 3) * S_hat)
+  hyper$min_gap <- g_min                              ## NEW: used by the theta sampler
   
-  nu_prior <- 4
-  psi <- (nu_prior - 2 - 1) * S_hat 
-  hyper <- build_hyper((nu - 3) * S_hat)          # E[Sigma_e] = S_hat
-  phi0 <- (hyper$b_phi + hyper$a_phi)/2
-  init <- init_param(sigma0, lambda_sync, theta, beta, S_hat, eta_sync, alpha_sync, gamma,
+  init <- init_param(tau0, lambda, theta, beta, S_hat, eta, alpha, gamma,
                      phi = phi0, n = n)
   
-  ## 6. diagnostic plot
+  ## 6. checks
+  stopifnot(max(abs(hyper$C_bar %*% gamma - beta)) < 1e-10,
+            !is.unsorted(theta), theta[1] > 0, theta[k] < 2 * pi,
+            min(diff(c(theta, theta[1] + 2 * pi))) >= g_min - 1e-12)
+  rms <- sapply(1:n, function(i)
+    sqrt(mean((X[, , i] - (alpha[i] * (mu %*% Rot(lambda[i])) +
+                             matrix(eta[i, ], k, 2, byrow = TRUE)))^2)))
+  
+  ## 7. diagnostic plot
   if (plot) {
     th_grid <- seq(0, 2 * pi, length.out = 400)
     r_grid  <- as.numeric(exp(Basis_Construction(th_grid, n_basis, degree) %*% beta))
-    curve   <- scale(cbind(r_grid * cos(th_grid), r_grid * sin(th_grid)),
-                     center = attr(mu, "scaled:center"), scale = FALSE)
+    curve   <- cbind(r_grid * cos(th_grid), r_grid * sin(th_grid))
     aligned <- lapply(1:n, function(i)
-      (X[,,i] - matrix(eta_sync[i,], k, 2, byrow = TRUE)) %*% t(Rot(lambda_sync[i])) / alpha_sync[i])
+      ((X[, , i] - matrix(eta[i, ], k, 2, byrow = TRUE)) %*% t(Rot(lambda[i]))) / alpha[i])
     rng <- range(unlist(aligned), curve)
     plot(NA, xlim = rng, ylim = rng, asp = 1, xlab = "", ylab = "",
          main = paste0("Initial mu* (", start, ")"))
@@ -811,9 +861,9 @@ init_mu_star <- function(X,
     text(mu, labels = 1:k, pos = 3, cex = 0.7, col = "red")
   }
   
-  list(init = init, mu = mu, hyper = hyper, X = X, theta = theta)
+  list(init = init, hyper = hyper, X = X, theta = theta, theta_gpa = theta_gpa,
+       mu = mu, S_hat = S_hat, rms = rms, reflected = which(refl))
 }
-
 gg_mcmc_diagnostics <- function(data, param_name = "NA", real_values = "NA" ,matrix_param = FALSE) {
   # This function is very useful to build fast plots for our model
   
@@ -886,4 +936,41 @@ gg_mcmc_diagnostics <- function(data, param_name = "NA", real_values = "NA" ,mat
   } else {
     return(plot_list)
   }
+}
+
+
+plot_status <- function(init_env, hyper_env, X, file, it, i_unit = 1) {
+  # tmp <- paste0(file, ".tmp")
+  closed <- function(M) rbind(M, M[1, ])
+  # pdf(tmp, width = 13, height = 4.8)
+  # ok <- FALSE
+  # on.exit({ dev.off(); if (ok) file.rename(tmp, file) }, add = TRUE)
+  par(mfrow = c(1, 3), mar = c(3, 3, 3.5, 1))
+  
+  # 1. mu* e mu* + S W
+  mu_star <- init_env$mean
+  mu_warp <- mu_star + hyper_env$S_mat %*% init_env$W[,,i_unit]
+  plot(closed(mu_star), type = "o", pch = 19, col = "darkblue", asp = 1,
+       xlim = range(mu_star[, 1], mu_warp[, 1]), ylim = range(mu_star[, 2], mu_warp[, 2]),
+       xlab = "", ylab = "",
+       main = sprintf("mu*  | iter %d\nsigma2 = %.3g  phi = %.3g  tau = (%.3g, %.3g)",
+                      it, init_env$sigma_2, init_env$phi, init_env$tau[1], init_env$tau[2]))
+  lines(closed(mu_warp), lty = 2, lwd = 2, col = "red")
+  text(mu_star, labels = seq_len(nrow(mu_star)), pos = 3, cex = 0.6)
+  legend("topright", c("mu*", "mu* + SW"), col = c("darkblue", "red"),
+         lty = c(1, 2), bty = "n", cex = 0.8)
+  
+  # 2. mu_i
+  mu_i <- init_env$mean_i[, , i_unit]
+  plot(closed(mu_i), type = "o", pch = 19, col = "brown", asp = 1,
+       xlab = "", ylab = "", main = sprintf("mu_%d", i_unit))
+  
+  # 3. X_i vs mu_i
+  Xi <- X[, , i_unit]
+  plot(closed(Xi), type = "o", pch = 21, bg = "black", asp = 1,
+       xlim = range(Xi[, 1], mu_i[, 1]), ylim = range(Xi[, 2], mu_i[, 2]),
+       xlab = "", ylab = "", main = sprintf("X_%d (nero) vs mu_%d (rosso)", i_unit, i_unit))
+  lines(closed(mu_i), col = "red", lwd = 2)
+  
+  # ok <- TRUE
 }

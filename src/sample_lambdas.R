@@ -156,7 +156,7 @@ sample_lambda_eta <- function(init, hyper, index, X, burn = TRUE){
   Q_R_star <- (1/alpha_i^2) * t(R_mat_star) %*% init$Sigma_inv %*% R_mat_star # proposed inverse
   
   
-  mean_res_star <- alpha_i * (init$mean + hyper$S_mat%*%init$W) %*% R_mat_star # proposed mean configuration
+  mean_res_star <- alpha_i * (init$mean + hyper$S_mat%*%init$W[,,index]) %*% R_mat_star # proposed mean configuration
   #mean_res_star <- alpha_i * (init$mean + project_warp(hyper$S_mat, init$W, init$thetas)) %*% R_mat_star # proposed mean configuration
   #project_warp(S_mat, init_param$W, init_param$thetas)
   tilde_E_star <- X[,,index] - mean_res_star
