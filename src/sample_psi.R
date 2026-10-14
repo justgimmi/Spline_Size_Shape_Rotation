@@ -58,7 +58,7 @@
 #   # 6. Reconstruct matrix psi ((k-3) x 2) and update W (k x 2)
 #   for (i in 1:n) {
 #     init_param$psi[,,i] <- matrix(vec_psi_sample, nrow = k_free, ncol = 2, byrow = FALSE)
-#     init_param$W[,,i] <- D_p %*% init_param$psi[,,i] 
+#     init_param$W[,,i] <- D_p %*% init_param$psi[,,i]
 #   }
 # 
 #   # 7. Update dependent subject-level means and residuals
@@ -74,18 +74,16 @@
 #     init_param$residual[, , i] <- t(res) %*% res
 #   }
 #   #hyper$log_lik <- log_density(init_param)
-#   V <-  max(diag(S_mat %*% D_p %*% Kinv%*% t(D_p) %*% t(S_mat)))
+#   V <-  median(diag(S_mat %*% D_p %*% Kinv%*% t(D_p) %*% t(S_mat)))
 #   lp_sig <- -log(V) - log(1 + (init_param$sigma_2/(V*hyper$a_sigma))^2)
 #   logdetK <- as.numeric(determinant(K/init_param$sigma_2, logarithm = TRUE)$modulus)
 # 
 # 
 # 
-#   if (init_param$z == 1) {
-#     hyper$traces <- -0.5 * (1/init_param$sigma_2) * trace_function_psi(init_param$W, hyper$S_mat) +
+#   hyper$traces <- -0.5 * (1/init_param$sigma_2) * trace_function_psi(init_param$W, hyper$S_mat) +
 #       logdetK  + lp_sig
-#   }
 #   # else{
-#   # 
+#   #
 #   #   hyper$traces <- -0.5 * (1/init_param$sigma_2) * tr(t(init_param$psi) %*% w_mat %*% init_param$psi) + sum(log(w)) - k_free*log(init_param$sigma_2) +
 #   #     lp_sig
 #   # }
@@ -101,7 +99,7 @@ sample_psi <- function(init, hyper, X) {
   k_l <- init$k_l
   r_curr <- exp(Basis_Construction(init$thetas, hyper$n_basis, hyper$degree) %*% init$betas)
   D_p <- D_p_constructor(init$mean, init$thetas, init$betas, r_curr,
-                         hyper$n_basis, hyper$degree, D_p_prev = hyper$D_ref)
+                         hyper$n_basis, hyper$degree, D_p_prev = hyper$D_p)
   k_free  <- ncol(D_p)
   S_mat   <- hyper$S_mat
   K       <- crossprod(D_p, S_mat %*% D_p)          # prior precision of each column of psi_i (x sigma2)
@@ -139,14 +137,15 @@ sample_psi <- function(init, hyper, X) {
     init$residual[, , i] <- crossprod(res)
   }
 
-  # 4. Prior term (same formula as val_3 in the eval_* functions)
+  # 4. Prior term 
   V <- median(diag(S_mat %*% D_p %*% Kinv %*% t(D_p) %*% t(S_mat)))
   # V <- 1
-  lp_sig  <- -log(V) - log(1 + (sigma_2 / (V * hyper$a_sigma))^2)
+  #lp_sig  <- -log(V) - log(1 + (sigma_2 / (V * hyper$a_sigma))^2)
+  lp_sig  <- hyper$a_s2 * log(V) - hyper$b_s2 * V / init$sigma_2
   logdetK <- as.numeric(determinant(K / sigma_2, logarithm = TRUE)$modulus)
   hyper$traces <- -0.5 / sigma_2 * trace_function_psi(init$W, S_mat) + n * logdetK + lp_sig
 
-  hyper$D_p      <- D_p
+  hyper$D_p <- D_p
   init$r   <- r_curr
   hyper$log_lik  <- log_density(init)
 }

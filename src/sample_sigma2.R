@@ -58,9 +58,9 @@
 #   w    <- 1 / diag(Kinv)
 #   w_mat <- diag(w, nrow = k_free, ncol = k_free)
 #   ## ---- STEP A (CP): sigma_2 | psi — solo prior, nessuna verosimiglianza ----
-#   quad <-  tr(t(init$psi[,,1]) %*% K %*% init$psi[,,1])  
+#   quad <-  tr(t(init$psi[,,1]) %*% K %*% init$psi[,,1])
 # 
-#   V <- max(diag(hyper$S_mat %*% hyper$D_p %*% Kinv %*% t(hyper$D_p) %*% t(hyper$S_mat)))
+#   V <- median(diag(hyper$S_mat %*% hyper$D_p %*% Kinv %*% t(hyper$D_p) %*% t(hyper$S_mat)))
 #   log_sigma_curr <- log(init$sigma_2)
 #   log_sigma_prop <- log_sigma_curr + rnorm(1, sd = sqrt(hyper$lambda_sigma_cp * hyper$Sigma_sigma_cp))
 #   sigma_prop <- exp(log_sigma_prop)
@@ -135,7 +135,7 @@
 #   hyper$log_lik <- log_density(init)
 # }
 
-
+# 
 sample_sigma2 <- function(init, hyper, X, burn = TRUE, use_ncp = TRUE){
   n      <- init$n
   k_l    <- init$k_l
@@ -147,9 +147,7 @@ sample_sigma2 <- function(init, hyper, X, burn = TRUE, use_ncp = TRUE){
   V      <- median(diag(S_mat %*% D_p %*% Kinv %*% t(D_p) %*% t(S_mat)))
   # V <- 1
   ## ---- STEP A (CP): sigma_2 | psi_1..n — prior only ----
-  Pm   <- matrix(init$psi, nrow = k_free)              # k_free x 2n
-  quad <- sum(Pm * (K %*% Pm))                         # sum_i tr(psi_i' K psi_i)
-
+  quad <- trace_function_psi_K(init$psi, K)
   log_sigma_curr <- log(init$sigma_2)
   log_sigma_prop <- log_sigma_curr + rnorm(1, sd = sqrt(hyper$lambda_sigma_cp * hyper$Sigma_sigma_cp))
   sigma_prop     <- exp(log_sigma_prop)
@@ -157,6 +155,9 @@ sample_sigma2 <- function(init, hyper, X, burn = TRUE, use_ncp = TRUE){
   lpA <- function(s2, ls2){
     -0.5 * quad / s2 - n * k_free * ls2 -
     log(1 + (s2 / (V * hyper$a_sigma))^2) + ls2
+
+    # -0.5 * quad / s2 - k_free * ls2 -
+    #   log(1 + (s2 / (V * hyper$a_sigma))^2) + ls2
   }
   log_alpha_A <- min(0, lpA(sigma_prop, log_sigma_prop) - lpA(init$sigma_2, log_sigma_curr))
 
@@ -219,62 +220,27 @@ sample_sigma2 <- function(init, hyper, X, burn = TRUE, use_ncp = TRUE){
   lp_sig  <- -log(V) - log(1 + (s2 / (V * hyper$a_sigma))^2)
   logdetK <- as.numeric(determinant(K / s2, logarithm = TRUE)$modulus)
   hyper$traces  <- -0.5 / s2 * trace_function_psi(init$W, S_mat) + n * logdetK + lp_sig
+  # hyper$traces  <- -0.5 / s2 * trace_function_psi(init$W, S_mat) + logdetK + lp_sig
   hyper$log_lik <- log_density(init)
 }
 
-# 
-# sample_sigma2_ig <- function(init, hyper, X){
-#   n <- init$n; D <- hyper$D_p; S <- hyper$S_mat; k_free <- ncol(D)
-#   A <- S %*% D; K <- crossprod(D, A); Lk <- chol(K)
-#   V <- max(colSums(backsolve(Lk, t(A), transpose = TRUE)^2))
-#   Pm   <- matrix(init$psi, nrow = k_free)
-#   quad <- sum(Pm * (K %*% Pm))
-#   init$sigma_2 <- 1 / rgamma(1, shape = hyper$a_s2 + n * k_free,
-#                              rate  = hyper$b_s2 * V + 0.5 * quad)
-#   s2 <- init$sigma_2
-#   lp_sig  <- hyper$a_s2 * log(V) - hyper$b_s2 * V / s2        # log p(sigma2 | V), theta/gamma-dependent part
-#   logdetK <- 2 * sum(log(diag(Lk))) - k_free * log(s2)
-#   hyper$traces  <- -0.5 / s2 * trace_function_psi(init$W, S) + n * logdetK + lp_sig
-#   hyper$log_lik <- log_density(init)
-# }
+#
+sample_sigma2_ig <- function(init, hyper, X){
+  n <- init$n
+  D_p <- hyper$D_p
+  S_mat <- hyper$S_mat
+  k_free <- ncol(D_p)
+  K <- crossprod(D_p, S_mat %*% D_p)
+  Lk <- chol(K)
+  Kinv <- chol2inv(Lk)
+  V <- median(diag(S_mat %*% D_p %*% Kinv %*% t(D_p) %*% t(S_mat)))
+  quad <- trace_function_psi_K(init$psi, K)
+  init$sigma_2 <- 1 / rgamma(1, shape = hyper$a_s2 + n * k_free,
+                             rate  = hyper$b_s2 * V + 0.5 * quad)
+  s2 <- init$sigma_2
+  lp_sig  <- hyper$a_s2 * log(V) - hyper$b_s2 * V / s2        # log p(sigma2 | V), theta/gamma-dependent part
+  logdetK <- as.numeric(determinant(K / s2, logarithm = TRUE)$modulus)
+  hyper$traces  <- -0.5 / s2 * trace_function_psi(init$W, S_mat) + n * logdetK + lp_sig
+  hyper$log_lik <- log_density(init)
+}
 
-# sample_sigma2_collapsed <- function(init, hyper, X, burn = TRUE){
-#   n <- init$n; k_l <- init$k_l
-#   D <- hyper$D_p; S <- hyper$S_mat; k_free <- ncol(D)
-#   K <- crossprod(D, S %*% D); Lk <- chol(K); ldK <- 2 * sum(log(diag(Lk)))
-#   A <- S %*% D; V <- max(colSums(backsolve(Lk, t(A), transpose = TRUE)^2))
-#   C_inv <- chol2inv(init$chol_c)
-#   DpS <- t(D) %*% S; G <- DpS %*% C_inv %*% t(DpS)
-#   Om_lik <- kronecker(init$Sigma_inv, G)
-#
-#   # rhs_i do not depend on sigma2: compute once
-#   RHS <- sapply(1:n, function(i){
-#     R <- init$R[,,i]; a <- init$alphas[i]
-#     Z <- X[,,i] - a * (init$mean %*% R) - matrix(init$eta[i,], k_l, 2, byrow = TRUE)
-#     as.vector(((1/a) * DpS %*% C_inv %*% Z %*% t(R)) %*% init$Sigma_inv)
-#   })                                                   # (2 k_free) x n
-#
-#   log_target <- function(ls2){
-#     s2 <- exp(ls2)
-#     U  <- chol(Om_lik + kronecker(diag(2), K / s2))
-#     Y  <- forwardsolve(t(U), RHS)                      # U^-T rhs_i, all i
-#     n * (ldK - k_free * ls2) -                         # 0.5 * n * logdet(I2 (x) K/s2)
-#       n * sum(log(diag(U))) +                          # -0.5 * n * logdet(Omega)
-#       0.5 * sum(Y^2) -                                 # 0.5 * sum_i rhs_i' Omega^-1 rhs_i
-#       log(1 + (s2 / (V * hyper$a_sigma))^2) + ls2     # sigma2/V ~ HC(a) + Jacobian
-#   }
-#
-#   ls_curr <- log(init$sigma_2)
-#   ls_prop <- ls_curr + rnorm(1, sd = sqrt(hyper$lambda_sigma_cp * hyper$Sigma_sigma_cp))
-#   la <- min(0, log_target(ls_prop) - log_target(ls_curr))
-#   if (log(runif(1)) <= la) {
-#     init$sigma_2 <- exp(ls_prop)
-#     hyper$sigma_acc_cp <- hyper$sigma_acc_cp + 1
-#   }
-#   if (burn) {
-#     g <- min(0.01, hyper$t^(-0.5))
-#     hyper$lambda_sigma_cp <- hyper$lambda_sigma_cp * exp(g * (exp(la) - hyper$a_opt))
-#     hyper$Sigma_sigma_cp  <- hyper$Sigma_sigma_cp + g * ((log(init$sigma_2) - hyper$mu_sigma_cp)^2 - hyper$Sigma_sigma_cp)
-#     hyper$mu_sigma_cp     <- hyper$mu_sigma_cp + g * (log(init$sigma_2) - hyper$mu_sigma_cp)
-#   }
-# }

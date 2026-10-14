@@ -19,15 +19,16 @@ eval_log_lik_theta_joint <- function(theta_cand, init, hyper, X) {
   val <- 0
   mean_i_array <- array(0, dim = c(k_l, 2, n))
   residual_array <- array(0, dim = c(2, 2, n))
-  mat_cand <- covariance_mat(init$mat_dist, theta_cand)
-  # C_cand <- exp(-mat_cand/init$phi)
-  #C_cand <- diag(1, nrow = k_l, ncol = k_l)
-  C_cand <- init$C
+  #mat_cand <- covariance_mat(init$mat_dist, theta_cand)
+  #mat_cand <- covariance_mat(init$mat_dist, mean_cand)
+  #C_cand <- exp(-mat_cand/init$phi)
+  C_cand <- diag(1, nrow = k_l, ncol = k_l)
+  # C_cand <- init$C
   chol_c_cand <- chol(C_cand)
   
   
   S_mat_cand <- S_mat_constructor(hyper$S_mat, mean_cand)
-  D_p_cand <- D_p_constructor(mean_cand, theta_cand, init$betas, r_cand, hyper$n_basis, hyper$degree, D_p_prev = hyper$D_ref)
+  D_p_cand <- D_p_constructor(mean_cand, theta_cand, init$betas, r_cand, hyper$n_basis, hyper$degree, D_p_prev = NULL)
   #D_p_cand <- hyper$D_p
   #W_cand <- init$W
   #W_cand <- D_p_cand %*%init$psi
@@ -60,13 +61,14 @@ eval_log_lik_theta_joint <- function(theta_cand, init, hyper, X) {
   w_mat <- diag(w, ncol = length(w), nrow = length(w))
   V <-  median(diag(S_mat_cand %*% D_p_cand %*% Kinv %*% t(D_p_cand) %*% t(S_mat_cand)))
   # V <- 1
-  lp_sig <- -log(V) - log(1 + (init$sigma_2/(V*hyper$a_sigma))^2)
+  #lp_sig <- -log(V) - log(1 + (init$sigma_2/(V*hyper$a_sigma))^2)
+  lp_sig  <- hyper$a_s2 * log(V) - hyper$b_s2 * V / init$sigma_2
   logdetK <- as.numeric(determinant(K/init$sigma_2, logarithm = TRUE)$modulus)
 
   if (init$z  == 1) {
     val_3 <- -0.5 * (1/init$sigma_2) * trace_function_psi(W_cand, S_mat_cand) +
       n*logdetK  + lp_sig
-    
+    # 
     # val_3 <- -0.5 * (1/init$sigma_2) * trace_function_psi(W_cand, S_mat_cand)  +
     #    logdetK  + lp_sig
     log_lik_total <- -0.5 * val + val_2 + val_3
@@ -84,7 +86,6 @@ eval_log_lik_theta_joint <- function(theta_cand, init, hyper, X) {
               B_sim = B_cand,
               C = C_cand, 
               chol_c = chol_c_cand,
-              mat_cand = mat_cand,
               S_mat = S_mat_cand,
               W = W_cand,
               D_p = D_p_cand,
@@ -142,7 +143,6 @@ sample_theta_logit_normal <- function(init, hyper, X){
   init$residual <- res_cand$residual
   init$mean_i <- res_cand$mean_i
   init$mean <- res_cand$mean
-  init$mat_dist <- res_cand$mat_cand
   init$C <- res_cand$C
   init$chol_c <- res_cand$chol_c
   hyper$B_sim <- res_cand$B_sim

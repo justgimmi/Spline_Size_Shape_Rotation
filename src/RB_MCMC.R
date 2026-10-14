@@ -62,20 +62,15 @@ RB_MCMC <- function(total_iter, burnin, thinning,
       hyper_env$t <- hyper_env$t + 1
       cli_progress_update(id = pbar, inc = 1)
       #print(init_env$mean)
+      sample_tau(init_env, hyper_env, burn) 
       sample_beta(init_env, hyper_env, X, k_l)
       sample_theta_logit_normal(init_env, hyper_env, X)
       # sample_z(init_env, hyper_env, X)
-      sample_sigma2(init_env, hyper_env, X, burn = burn)
+      sample_sigma2_ig(init_env, hyper_env, X)
       sample_psi(init_env, hyper_env, X)
-      #sample_sigma2_ig(init_env, hyper_env, X)
+      check_state(init_env, hyper_env, X, tag = "NA")
       #sample_sigma2(init_env, hyper_env, X, burn = burn)
-      # if (init_env$z == 1) {
-      #   sample_psi(init_env, hyper_env, X)
-      #   sample_sigma2(init_env, hyper_env, X, burn = burn)
-      # }
-      #sample_xi(init_env, hyper_env)
-      hyper_env$log_lik <- log_density(init_env)
-      #sample_phi(init_env, hyper_env, X, burn = burn)
+      check_state(init_env, hyper_env, X, tag = "NA")
       hyper_env$log_lik <- log_density(init_env)
       
       #print(init_env$mean)
@@ -85,17 +80,6 @@ RB_MCMC <- function(total_iter, burnin, thinning,
       }
       hyper_env$log_lik <- log_density(init_env)
       
-      #sample_lambda(init_env, hyper_env, X, k_l)
-      
-      #hyper_env$a_new <- hyper_env$L/2 + hyper_env$a_tau # shape parameter
-      #hyper_env$a_new <- ncol(hyper_env$C_bar)/2 + hyper_env$a_tau
-      #hyper_env$b_new <- (t(init_env$betas)%*%hyper_env$K%*%init_env$betas)/2+ hyper_env$b_tau # scale parameter
-      #hyper_env$b_new <- (t(init_env$gammas)%*%init_env$gammas)/2+ hyper_env$b_tau
-      #hyper_env$b_new <-  (t(init_env$betas) %*% hyper_env$K %*% init_env$betas)/2 + hyper_env$b_tau
-      #sample_tau(init_env, a_new = hyper_env$a_new, b_new = hyper_env$b_new) # sample new tau^2
-      sample_tau(init_env, hyper_env, burn) 
-      # print(init_env$sigma_2)
-      # print(init_env$tau)
       for (y in 1:n) {
         hyper_env$log_lik_a[y] <- eval_log_lik_alpha(log(init_env$alphas[y]), hyper_env, init_env, k_l, X, y)$log_lik
 
@@ -104,7 +88,9 @@ RB_MCMC <- function(total_iter, burnin, thinning,
       # hyper_env$a_sigma_post <- hyper_env$a_sigma + (k_l - 3)
       # hyper_env$b_sigma_post <- hyper_env$b_sigma + tr(t(init_env$W) %*% hyper_env$S_mat %*% init_env$W)/2
       # init_env$sigma_2 <- rinvgamma(n = 1, shape = hyper_env$a_sigma_post, scale = hyper_env$b_sigma_post)
+      #sample_phi(init_env, hyper_env, X, burn = TRUE)
       sample_Sigma(init_env, hyper_env, k_l)
+      check_state(init_env, hyper_env, X, tag = "NA")
       #print(init_env$z)
       #print(init_env$sigma_2)
       # print(init_env$psi)
@@ -156,8 +142,8 @@ RB_MCMC <- function(total_iter, burnin, thinning,
                  error = function(e) message("plot_status fallito: ", conditionMessage(e)))
         tryCatch(plot_status(init_env, hyper_env, X, plot_file, hyper_env$t, i_unit = 10),
                  error = function(e) message("plot_status fallito: ", conditionMessage(e)))
-        print(diag(hyper_env$S_mat %*% hyper_env$D_p %*% solve(t(hyper_env$D_p)%*%hyper_env$S_mat %*% hyper_env$D_p) %*% 
-                         t(hyper_env$D_p) %*% t(hyper_env$S_mat )))
+        print(hyper_env$S_mat %*% hyper_env$D_p %*% solve(t(hyper_env$D_p)%*%hyper_env$S_mat %*% hyper_env$D_p) %*% 
+                         t(hyper_env$D_p) %*% t(hyper_env$S_mat ))
       }
     
       
@@ -199,27 +185,33 @@ RB_MCMC <- function(total_iter, burnin, thinning,
   return(out)
   
 }
-
+check_state <- function(init, hyper, X, tag){
+  chk <- eval_log_lik_beta(init$gammas, init, hyper, X, init$k_l)
+  d <- c(lik    = abs((chk$log_lik - chk$val_3) - log_density(init)),
+         prior  = abs(chk$val_3 - hyper$traces),
+         mean_i = max(abs(chk$mean_i - init$mean_i)),
+         W      = max(abs(chk$W - init$W)))
+  if (any(d > 1e-6)) message(sprintf("[%s] ", tag), paste(names(d), signif(d, 3), collapse = " | "))
+  invisible(d)
+}
 
 # hyper <- hyperparameters(2, 0.5, 8, 3, width_theta = 1, m = 6, nu = 10,
 #                          psi = psi,n = dim(X)[3], a = 0.01, b = 0.01, a_phi = a_phi, b_phi = b_phi, X = X)
-X <- sam$X
+X <- sam$X/100
 X <- mat_not_demented
-X <- mat_demented
+X <- mat_demented/100
+X <- final_array/100
 X <- final_array
-prova <- init_mu_star (X,n_basis = 6, degree = 3,
-                       start   = "circle",
-                       ridge   = 1e-1,
-                       sigma0  = c(0.1, 0.1),
-                       plot    = TRUE)
 
-prova <- init_mu_star (X,n_basis = 6, degree = 3, start = "gpa", ridge   = 1e-3, plot = TRUE)
+prova <- init_mu_star (X,n_basis = 14, degree = 3, start = "gpa", ridge   = 1e-1, plot = TRUE,
+                       Sigma_eta = diag(10, 2))
 init <- prova$init
 hyper <- prova$hyper
 
 X <- prova$X
+init$sigma_2
 hyper$a_sigma
-
+init$C
 hyper$nu
 init$Sigma
 init$sigma_2
@@ -229,14 +221,19 @@ X <- prova$X
 hyper$b_phi
 hyper$Sigma_eta_new
 hyper$a_sigma
-save(sam, X, hyper, init, file = "No_warp.RData")
-save(sam, X, hyper, init, file = "warp_indep.RData")
+hyper$degree
+hyper$a_phi
+# save(sam, X, hyper, init, file = "No_warp.RData")
+# save(sam, X, hyper, init, file = "warp_indep.RData")
+load("warp.RData")
 save(sam, X, hyper, init, file = "warp.RData")
-save(X, hyper, init, file = "No_Demente.RData")
+# save(X, hyper, init, file = "No_Demente.RData")
 save(X, hyper, init, file = "Demente.RData")
 save(X, hyper, init, file = "foglie.RData")
-load("No_Demente.RData")
-load("No_warp.RData")
+save(X, hyper, init, file = "pesci.RData")
+# load("No_Demente.RData")
+# load("No_warp.RData")
+load("foglie.RData")
 hyper$log_lik
 hyper$K
 hyper$L

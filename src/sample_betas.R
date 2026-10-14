@@ -9,9 +9,12 @@ eval_log_lik_beta <- function(gamma_cand, init, hyper, X, k_l){
   mu_mean_y <- r*sin(init$thetas)
   mean <- cbind(mu_mean_x, mu_mean_y) # average configuration 
   S_mat_cand <- S_mat_constructor(hyper$S_mat, mean)
-  D_p_cand <- D_p_constructor(mean, init$thetas, hyper$C_bar%*%gamma_cand, r, hyper$n_basis, hyper$degree, D_p_prev = hyper$D_ref)
+  D_p_cand <- D_p_constructor(mean, init$thetas, hyper$C_bar%*%gamma_cand, r, hyper$n_basis, hyper$degree, D_p_prev = NULL)
   #D_p_cand <- hyper$D_p
   #W_cand <- init$W
+  mat_cand <- covariance_mat(init$mat_dist, mean)
+  C_cand <- init$C
+  chol_c_cand <- chol(C_cand)
   mean_i <- array(NA, dim = c(k_l, 2, n))
   residual <- array(NA, dim = c(2, 2, n))
   
@@ -24,7 +27,7 @@ eval_log_lik_beta <- function(gamma_cand, init, hyper, X, k_l){
     mean_i[,,i] <- init$alphas[i]*(mean + S_mat_cand %*% W_cand[,,i])%*%init$R[,,i] + eta_matrix # compute the mean configuration for every unit
     #mean_i[,,i] <- init$alphas[i]*(mean + project_warp(S_mat_cand, W_cand, init$thetas))%*%init$R[,,i] + eta_matrix
     
-    res <- backsolve(init$chol_c,X[,,i] - mean_i[,,i],  transpose = TRUE)
+    res <- backsolve(chol_c_cand,X[,,i] - mean_i[,,i],  transpose = TRUE)
     residual[,,i] <- t(res)%*%res
   }
   
@@ -34,7 +37,7 @@ eval_log_lik_beta <- function(gamma_cand, init, hyper, X, k_l){
                init$Q_R[2,2,] * residual[2,2,])
   
   val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma)) -
-    init$n*log(det(init$C))
+    init$n*log(det(C_cand))
   
   K <- crossprod(D_p_cand, S_mat_cand %*% D_p_cand)
   Lk <- tryCatch(chol(K), error = function(e) NULL)
@@ -46,7 +49,8 @@ eval_log_lik_beta <- function(gamma_cand, init, hyper, X, k_l){
   w_mat <- diag(w, nrow = length(w), ncol = length(w))
   V <-  median(diag(S_mat_cand %*% D_p_cand %*% Kinv %*% t(D_p_cand) %*% t(S_mat_cand)))
   # V <- 1
-  lp_sig <- -log(V) - log(1 + (init$sigma_2/(V*hyper$a_sigma))^2)
+  # lp_sig <- -log(V) - log(1 + (init$sigma_2/(V*hyper$a_sigma))^2)
+  lp_sig  <- hyper$a_s2 * log(V) - hyper$b_s2 * V / init$sigma_2
   logdetK <- as.numeric(determinant(K/init$sigma_2, logarithm = TRUE)$modulus)
   
   if (init$z == 1) {
@@ -64,7 +68,8 @@ eval_log_lik_beta <- function(gamma_cand, init, hyper, X, k_l){
   #   log_lik <- -0.5 * val + val_2 + val_3
   # }
   return(list(log_lik =  log_lik, residual = residual, mean = mean, mean_i = mean_i,
-              S_mat = S_mat_cand, W = W_cand, D_p = D_p_cand, val_3 = val_3, r = r))
+              S_mat = S_mat_cand, W = W_cand, D_p = D_p_cand, val_3 = val_3, r = r, 
+              C = C_cand, chol_c = chol_c_cand))
 }
 
 sample_beta <- function(init, hyper, X, k_l){
@@ -122,6 +127,8 @@ sample_beta <- function(init, hyper, X, k_l){
   hyper$D_p <- res_cand$D_p
   hyper$traces <- res_cand$val_3
   init$r <- res_cand$r
+  init$C <- res_cand$C
+  init$chol_c <- res_cand$chol_c
 
 }
 
