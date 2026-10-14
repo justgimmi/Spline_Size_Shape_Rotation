@@ -158,8 +158,7 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   mu_mean_y <- r*sin(thetas)
   mu_mean <- cbind(mu_mean_x, mu_mean_y) # mean configuration 
   k_free <- K_l - 5
-  S_mat <- matrix(0, nrow = K_l, ncol = K_l)
-  S_mat <- S_mat_constructor(S_mat, mu_mean)
+  S_mat <- S_mat_constructor(mu_mean)
   # init <- list()
   # hyper <- list()
   # init$mean <- mu_mean
@@ -170,7 +169,7 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   # hyper$degree <- degree
   
   
-  D_p <- D_p_raw(mu_mean, thetas, beta_values, r, n_int_knots, degree)
+  D_p <- D_p_raw(mu_mean, k_l)
   if (sigma_2 == 0 && indep_error == TRUE) {
     Precision <- diag(1, nrow = k_free)
     U_prec <- chol(Precision)
@@ -275,24 +274,18 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
 
 # MCMC Util functions ----
 Rmat <- function(angle) { # rotation matrix 
-  matrix(c(cos(angle), -sin(angle), sin(angle), cos(angle)), nrow = 2, ncol = 2)
+  matrix(c(cos(angle), -sin(angle), sin(angle), cos(angle)), nrow = 2, ncol = 2, byrow = TRUE)
 }
 
 
-S_mat_constructor <- function(mat, mu){
-  # mat: K \times K conditional positive definite matrix
+S_mat_constructor <- function(mu){
   # mu: value of the latent mean K \times K
-  k_l <- nrow(mu) # number of landmarks
-  for (i in 1:k_l) {
-    for (j in 1:k_l) {
-      normm <- sum((mu[i, ] - mu[j, ])^2)   # = r^2
-      mat[i, j] <- ifelse(normm > 0, normm * log(sqrt(normm)), 0)  # r^2 log(r)
-    }
-  }
-  return(mat)
+  # this function build a conditional positive definite matrix 
+  mat <- dist(mu)
+  mat[mat > 0] <- mat[mat > 0]^2 * log(mat[mat > 0])
+  return(as.matrix(mat))
 }
 
-# 
 # D_p_constructor <- function(mu){
 #   k_l <- nrow(mu)
 #   ones <- matrix(1, nrow = 1, ncol = k_l)
@@ -322,23 +315,20 @@ S_mat_constructor <- function(mat, mu){
 #   return(C_bar_w)
 #   
 # }
-D_p_raw <- function(mu, thetas, betas, r, n_basis, degree, D_ref = NULL) {
-    k <- nrow(mu)
-    S <- S_mat_constructor(matrix(0, k, k), mu)
-    A <- rbind(1, t(mu))          # affine + zero mean displacement (4 x k)
-    sv <- svd(A, nu = 0, nv = k)
-    sv$v[, 4:k, drop = FALSE]                          # k - 4 columns
-
-}
+# D_p_raw <- function(mu, k) {
+#     A <- rbind(1, t(mu))          # affine + zero mean displacement (3 x k)
+#     sv <- svd(A, nu = 0, nv = k)
+#     sv$v[, 4:k, drop = FALSE]                          # k - 3 columns
+# 
+# }
 
 
-D_p_constructor <- function(mu, thetas, betas, r, n_basis, degree, D_p_prev = NULL) {
-  D_raw <- D_p_raw(mu, thetas, betas, r, n_basis, degree)
-  # if (is.null(D_p_prev)) return(D_raw)
-  # M  <- crossprod(D_p_prev, D_raw)
-  # sm <- svd(M)
-  # Rot <- sm$v %*% t(sm$u)
-  # D_raw %*% Rot
+D_p_constructor <- function(mu, k) {
+  # this function is used to define the basis function for the warping parameters
+  # we know that the svd could have a flipping sign or whatever but we align everything a posteriori
+  A <- rbind(1, t(mu))          # zero mean displacement (3 x k)
+  sv <- svd(A, nu = 0, nv = k)  # svd 
+  sv$v[, 4:k, drop = FALSE]   # free dimensions
 }
 # covariance_mat <- function(mat, thetas){
 #   # thetas: vector of angles
@@ -377,42 +367,32 @@ covariance_mat <- function(mat, mu){
 init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, gammas, phi, n){
   # n --> number of units 
   param <- list()
-  param$n <- n
-  param$k_l <- length(thetas)
-  param$tau <- tau
-  param$lambdas <- lambdas
-  param$thetas <- thetas
-  param$gammas <- gammas
-  param$gaps <- c(thetas[1], diff(thetas), 2*pi- thetas[param$k_l])/(2*pi)
-  #param$omega_theta <- log(param$gaps)
-  param$omega_theta <- log(param$gaps) - log(param$gaps[param$k_l + 1])
-  param$thetas_sorted <- sort(thetas)
-  param$betas <- as.matrix(betas)
-  param$Sigma <- Sigma 
-  param$eta <- eta
-  param$alphas <- alphas
-  param$r <- numeric(length(thetas)) # deterministic
-  param$mean <- matrix(0, nrow = length(thetas), ncol = 2) #deterministic
-  param$mean_i <- array(0, dim = c(length(thetas), 2, n))  # deterministic 
-  param$R <- array(NA, dim = c(2, 2, n)) #deterministic
+  param$n <- n # number of units
+  param$k_l <- length(thetas) # number of landmarks 
+  param$tau <- tau # 1x2 vector of variances 
+  param$lambdas <- lambdas # 1 x k vector of rotation parameters
+  param$thetas <- thetas # 1 x k vector of angles
+  param$gammas <- gammas # 1 x (k-3) vector of free spline coefficients
+  param$gaps <- c(thetas[1], diff(thetas), 2*pi- thetas[param$k_l])/(2*pi) # vector of k + 1 gaps
+  param$omega_theta <- log(param$gaps) - log(param$gaps[param$k_l + 1]) # vector of k + 1 omegas
+  param$betas <- as.matrix(betas) # 1 x k vector of spline coefficients
+  param$Sigma <- Sigma # 2 x 2 variance-covariance matrix
+  param$eta <- eta # n x 2 matrix of locations parameters
+  param$eta_array <- array(0, dim = c(length(thetas), 2, n))  #k x 2 x n array of shifting locations
+  param$alphas <- alphas # 1 x n vector of size parameters 
   
-  param$Sigma_inv <- solve(param$Sigma) # deterministic
-  param$Q_R <- array(NA, dim = c(2, 2, n)) # deterministic 
-  param$residual <-  array(NA, dim = c(2, 2, n)) #deterministic 
-  param$mat_dist <- diag(0, nrow = length(thetas), ncol = length(thetas)) 
-  # param$mat_dist <- covariance_mat(param$mat_dist, matrix(0, nrow = length(thetas), ncol = 2))
-  #param$C <- exp(-param$mat_dist/phi) # landmark covariance matrix
-  # param$C <- diag(1, nrow = length(thetas), ncol = length(thetas)) 
-  #param$chol_c <- chol((param$C)) # cholesky decompoition of the covariance matrix -->
-  # R is dumb so it is upper-triangular
-  param$phi <- phi
+  param$r <- numeric(length(thetas)) # deterministic vector of radius
+  param$mean <- matrix(0, nrow = length(thetas), ncol = 2) # deterministic matrix of star shape mean
+  param$mean_i <- array(0, dim = c(length(thetas), 2, n))  # deterministic array of means
+  param$R <- array(NA, dim = c(2, 2, n)) #deterministic array of rotation matrices
   
-  #param$psi <- matrix(rnorm(2*length(thetas)), nrow = length(thetas), ncol = 2)
-  param$sigma_2 <- 1
-  param$z <- 1
-  param$chi <- 0.1
-  param$psi <- array(NA, dim = c(length(thetas) - 3, 2, n))
-  param$W <- array(NA, dim = c(length(thetas), 2, n))
+  param$Sigma_inv <- solve(param$Sigma) # deterministic inverse 
+  param$Q_R <- array(NA, dim = c(2, 2, n)) # deterministic  R^T \Sigma^-1 R
+  param$residual <-  array(NA, dim = c(2, 2, n)) #deterministic (X_i - \mu_i)^T(X_i - \mu_i) 
+  param$sigma_2 <- 1 # temperature of the warping 
+  param$psi <- array(NA, dim = c(length(thetas) - 3, 2, n)) # k_free x 2 x n array of free warping
+  param$psi_flatten <- matrix(param$psi, nrow = length(thetas) - 3) # flatten version of psi
+  param$W <- array(NA, dim = c(length(thetas), 2, n)) # k x 2 x n array of constrained warping
   return(param)
   
 }
@@ -599,30 +579,18 @@ mean_constructor <- function(n_basis, degree, init, hyper, X){
   mu_mean_y <- init$r*sin(init$thetas)
   mean <- cbind(mu_mean_x, mu_mean_y)
   init$mean <- mean # average configuration 
-  mat_dist <- covariance_mat(init$mat_dist, mean)
-  init$mat_dist <- mat_dist
-  #init$C <- exp(-mat_dist/init$phi) # landmark covariance matrix
-  init$C <- diag(1, nrow = length(init$thetas), ncol = length(init$thetas)) 
-  init$chol_c <- chol((init$C)) 
   
   
-  hyper$S_mat <- S_mat_constructor(hyper$S_mat, mean)
-  hyper$D_p <- D_p_constructor(mean, init$thetas, init$betas,init$r, n_basis, degree = degree)
+  hyper$S_mat <- S_mat_constructor(mean)
+  hyper$D_p <- D_p_constructor(mean, init$k_l)
+  hyper$k_free <- ncol(hyper$D_p)
   Precision <- t(hyper$D_p) %*% hyper$S_mat %*% hyper$D_p
   K_inv <- chol2inv(chol(Precision)) # variance
   k_free <- ncol(hyper$D_p)
   # V <- diag(1/diag(K_inv), nrow = k_free, ncol =k_free) #precision 
   # V <- (1/init$sigma_2) * V
   U_prec <- chol(Precision/init$sigma_2)
-    # k - 3
-  # z_raw <- matrix(rnorm(2*k_free), k_free, 2)
-  # init$psi <-  matrix(backsolve(U_prec, z_raw), nrow = k_free, ncol = 2)
-  # 
-  # #init$psi <- matrix(0, nrow = k_free, ncol = 2 )
-  # 
-  # init$W <- hyper$D_p %*% init$psi
-  # z_raw <- matrix(rnorm(2*k_free), k_free, 2)
-  # app <- matrix(backsolve(U_prec, z_raw), nrow = k_free, ncol = 2)
+    # k - 
   for (i in 1:n) { # compute rotation matrix 
     z_raw <- matrix(rnorm(2*k_free), k_free, 2)
     init$psi[,,i] <-  matrix(backsolve(U_prec, z_raw), nrow = k_free, ncol = 2)
@@ -633,14 +601,14 @@ mean_constructor <- function(n_basis, degree, init, hyper, X){
     init$R[,,i] <- matrix(c(cos(init$lambdas[i]), -sin(init$lambdas[i]), 
                                   sin(init$lambdas[i]), cos(init$lambdas[i])), 
                                 byrow = T, nrow = 2, ncol = 2)
-    eta_matrix <- matrix(init$eta[i,], nrow = length(init$thetas), ncol = 2, byrow = T)
-    init$mean_i[,,i] <- init$alphas[i]*(init$mean + hyper$S_mat%*%init$W[,,i])%*%init$R[,,i] + eta_matrix # compute the mean configuration for every unit
+    init$eta_array[,,i] <- matrix(init$eta[i,], nrow = length(init$thetas), ncol = 2, byrow = T)
+    init$mean_i[,,i] <- init$alphas[i]*(init$mean + hyper$S_mat%*%init$W[,,i])%*%init$R[,,i] + init$eta_array[,,i] # compute the mean configuration for every unit
     #init_param$mean_i[,,i] <- init_param$alphas[i]*(init_param$mean + project_warp(hyper$S_mat, init_param$W, init_param$thetas))%*%init_param$R[,,i] +
     #  eta_matrix # compute the mean configuration for every unit
     
     init$Q_R[,,i] <- (1/(init$alphas[i]^2)) *t(init$R[,,i])%*%init$Sigma_inv%*%init$R[,,i] 
     
-    res <- backsolve(init$chol_c,X[,,i] - init$mean_i[,,i],  transpose = TRUE)
+    res <- X[,,i] - init$mean_i[,,i]
     #init_param$residual[,,i] <- t(X[,,i] - init_param$mean_i[,,i])%*%init_param$C %*% (X[,,i] - init_param$mean_i[,,i])
     init$residual[,,i] <- t(res)%*%res
   }
@@ -649,55 +617,43 @@ mean_constructor <- function(n_basis, degree, init, hyper, X){
   w    <- 1 / diag(Kinv)
   w_mat <- diag(w, nrow = k_free)
   V <-  median(diag(hyper$S_mat %*% hyper$D_p %*% solve(K) %*% t(hyper$D_p) %*% t(hyper$S_mat)))
+  hyper$V <- V
   # V <- 1
   # lp_sig <- -log(V) - log(1 + (init$sigma_2/(V*hyper$a_sigma))^2)
   lp_sig  <- hyper$a_s2 * log(V) - hyper$b_s2 * V / init$sigma_2
   logdetK <- as.numeric(determinant(K, logarithm = TRUE)$modulus)
-  if (init$z == 1) {
-    # hyper$traces <- -0.5 * (1/init$sigma_2) * trace_function_psi(init$W,hyper$S_mat) +
-    #   n*(logdetK - k_free*log(init$sigma_2)) + lp_sig
-    
-    hyper$traces <- -0.5 * (1/init$sigma_2) *  trace_function_psi(init$W, hyper$S_mat) +
-      logdetK - k_free*log(init$sigma_2) + lp_sig
-  }
-  # else{
-  #   
-  #   hyper$traces <- -0.5 * (1/init$sigma_2) * sum(init$psi * (w * init$psi)) + sum(log(w)) - k_free*log(init$sigma_2) + lp_sig
-  # }
-  hyper$D_ref <- D_p_raw(mean, init$thetas, init$betas, init$r, n_basis, degree)
-  
+  hyper$traces <- -0.5 * (1/init$sigma_2) *  trace_function(init$W, hyper$S_mat) +
+      n*logdetK - n*k_free*log(init$sigma_2) + lp_sig
+  #hyper$D_ref <- D_p_raw(mean, init$k_l)
+  hyper$SW <- tensor(hyper$S_mat, init$W, 2, 1)# candidate value of SW
   # return(init_param)
 }
 
-trace_function_psi <- function(W, S_mat){
-  val <- 0
-  n <- dim(W)[3]
-  #n <- 1
-  for (i in 1:n) {
-    val <- val + tr(t(W[,,i]) %*% S_mat %*% W[,,i])
-    
-  }
-  return(val)
+
+trace_function <- function(W, S_mat) {
+  # this function is very useful to compute trace functions and it is surprisingly fast
+  # it is used either to compute the \sum_{i = 1}^{n} tr(W_{i}^T S_mat W_i)
+  # but also to compute the other versione \sum_{i = 1}^{n} tr(\psi_{i}^T K \psi_o)
+  d <- dim(W) # k \times 2 \times n
+  W_cat <- matrix(W, nrow = d[1]) # flatten the array in one direction to obtain k \times 2n
+  sum(W_cat * (S_mat %*% W_cat)) # compute the wanted quantity
 }
 
-trace_function_psi_K <- function(psi, K){
-  val <- 0
-  n <- dim(psi)[3]
-  #n <- 1
-  for (i in 1:n) {
-    val <- val + tr(t(psi[,,i]) %*% K %*% psi[,,i])
-    
-  }
-  return(val)
+chol_det <- function(Lk){
+  # given a upper/lower triangular matrix obtained via cholesky, it computes the corresponding log_determinad
+  2*sum(log(diag(Lk)))
 }
+
 
 log_density <- function(init){
+  # this function compute the log_likelihood associated to the model
   val <- sum(init$Q_R[1,1,] * init$residual[1,1,] +
                init$Q_R[1,2,] * init$residual[2,1,] +
                init$Q_R[2,1,] * init$residual[1,2,] +
                init$Q_R[2,2,] * init$residual[2,2,])
   
-  val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma)) - ((init$n))*log(det(init$C))
+  # val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma)) - ((init$n))*log(det(init$C))
+  val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma))
   return(-0.5 * val + val_2)
 }
 

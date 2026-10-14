@@ -1,169 +1,32 @@
 # Sample the angle parameters -----
 
-# eval_log_lik_i <- function(lambda_candidate, hyper, init, i, X) {
-#   # this function is just a wrap up to compute the contribution of the new element inside the log-lik
-#   lambda_mod <- lambda_candidate %% (2*pi)
-#   R <- matrix(c(cos(lambda_mod), -sin(lambda_mod),
-#                 sin(lambda_mod), cos(lambda_mod)),
-#               byrow = T, nrow = 2, ncol = 2)
-#   eta_matrix <- matrix(init$eta[i,], nrow = length(init$thetas), ncol = 2, byrow = T)
-#   mean_i <- init$alphas[i]*init$mean%*%R+ eta_matrix
-#   Q_R <- (1/(init$alphas[i]^2)) *t(R)%*%init$Sigma_inv%*%R
-#   residual <- X[,,i] - mean_i
-# 
-#   quad_new <- sum(residual[,1]^2) * Q_R[1,1] +
-#     2 * sum(residual[,1] * residual[,2]) * Q_R[1,2] +
-#     sum(residual[,2]^2) * Q_R[2,2]
-# 
-# 
-#   return(list(log_lik = -0.5 * sum(quad_new), residual  = residual, Q_R = Q_R,
-#               mean_i = mean_i, R = R))
-# }
-# 
-# 
-# 
-# sample_lambda <- function(init, hyper, X, k_l){
-#   # This function build the slice sampler for the angle parameters
-#   n <- init$n # number of samples
-#   k <- k_l # number of landmarks
-#   # In this way, for each unit, we are decomposing the R^TSigma^-1R in three different elements
-#   m <- hyper$m
-#   w <- hyper$width_lambda
-#   for (i in 1:n) {
-# 
-#     Q_R_11 <- init$Q_R[1,1,i]
-#     Q_R_12 <- init$Q_R[1,2,i]
-#     Q_R_22 <- init$Q_R[2,2,i]
-# 
-#     e <- rexp(1)
-#     v <- runif(1)
-#     left <- init$lambdas[i] - v * w
-#     right <- left + w
-#     bool <- TRUE
-# 
-#     v_old_x <- X[, 1, i] - init$mean_i[, 1, i] # compute the old value for the residuals x of unit i
-#     v_old_y <- X[, 2, i] - init$mean_i[, 2, i] # compute the old value for the residuals y of unit i
-#     quad_old <- sum(v_old_x^2) * Q_R_11 +
-#       2 * sum(v_old_x * v_old_y) * Q_R_12 +
-#       sum(v_old_y^2) * Q_R_22 # this is the contribution of the i-th landmark on the log-likelihood
-#     # it is very easy to evaluate
-# 
-#     log_lik_i_old <- -0.5 * sum(quad_old)
-#     log_thresh <- log_lik_i_old - e
-#     u <- runif(1)
-#     J <- floor(m*u)
-#     up <- (m-1) - J
-# 
-#     while ((right - left) < 2*pi && eval_log_lik_i(left, hyper, init, i, X)$log_lik >= log_thresh && J > 0) {
-#       left <- left - w
-#       J <- J - 1
-#     }
-#     while ((right - left) < 2*pi && eval_log_lik_i(right, hyper, init,i, X)$log_lik >= log_thresh && up > 0) {
-# 
-#       right <- right + w
-#       up <- up - 1
-#     }
-# 
-#     if ((right - left) >= 2*pi) {
-#       right <- left + 2*pi
-#     }
-# 
-# 
-#     while (bool == TRUE) {
-#       lambda_raw <- left + runif(n = 1)*(right - left)
-# 
-#       res_cand <- eval_log_lik_i(lambda_raw, hyper, init, i, X)
-# 
-#       log_lambda_prop <- res_cand$log_lik
-# 
-#       if (log_lambda_prop >= log_thresh) {
-#         init$lambdas[i] <- lambda_raw  %% (2*pi)
-#         init$mean_i[, , i] <- res_cand$mean_i
-#         init$R[,,i] <- res_cand$R
-#         init$residual[, , i] <- t(res_cand$residual)%*%res_cand$residual
-#         init$Q_R[,,i] <- res_cand$Q_R
-#         hyper$log_lik <- hyper$log_lik +  res_cand$log_lik - log_lik_i_old
-#         bool <- FALSE
-#       } else {
-#         if (lambda_raw < init$lambdas[i]) {
-#           left <- lambda_raw
-#         } else {
-#           right <- lambda_raw
-#         }
-#       }
-#     }
-#   }
-# }
-
-
-
-#   res_star <- backsolve(C_chol, tilde_E_star, transpose = TRUE)
-#   res_star_bis <- t(res_star)%*%res_star
-#   # const_i = tr[Q_i * E_i' Cinv E_i]
-#   quad_star <- res_star_bis[1, 1] * Q_R_star[1, 1] + 2 * res_star_bis[1, 2] * Q_R_star[1, 2] + 
-#     res_star_bis[2, 2] * Q_R_star[2, 2]
-#   
-#   # posterior precision/covariance for eta_i, using s = 1_k' Cinv 1_k (NOT k_l)
-#   Sigma_star <- solve(s * Q_R_star + hyper$Sigma_eta_inv)
-#   
-#   # b_i = E_i' Cinv 1_k ; mu_eta = Sigma_post %*% Q_i %*% b_i
-#   b_star  <- t(res_star) %*% s_part
-#   #b_star <- v %*% ones
-#   mu_eta_star <- as.numeric(Sigma_star %*% Q_R_star %*% b_star)
-#   
-#   quad_eta_star <- as.numeric(t(mu_eta_star) %*% solve(Sigma_star) %*% mu_eta_star)
-#   
-#   log_prop <- 0.5*log(det(Sigma_star)) - 0.5*quad_star + 0.5*quad_eta_star
-#   
-#   # ---- current state ----
-#   Q_R_curr <- init$Q_R[,,index]
-#   eta_matrix <- matrix(eta_curr, nrow = k_l, ncol = 2, byrow = TRUE)
-#   tilde_E_curr <- X[,,index] - init$mean_i[,,index] + eta_matrix   # E_i(lambda_curr)
-#   res_curr <- backsolve(C_chol, tilde_E_curr, transpose = TRUE)
-#   res_curr_bis <- t(res_curr)%*%res_curr
-#   
-#   quad_curr <- res_curr_bis[1, 1] * Q_R_curr[1, 1] + 2 * res_curr_bis[1, 2] * Q_R_curr[1, 2] + 
-#     res_curr_bis[2, 2] * Q_R_curr[2, 2]
-#   Sigma_curr <- solve(s * Q_R_curr + hyper$Sigma_eta_inv)
-#   b_curr  <- t(res_curr) %*% s_part
-#   mu_eta_curr <- as.numeric(Sigma_curr %*% Q_R_curr %*% b_curr)
-#   quad_eta_curr <- as.numeric(t(mu_eta_curr) %*% solve(Sigma_curr) %*% mu_eta_curr)
-#   
-#   log_curr <- 0.5*log(det(Sigma_curr)) - 0.5*quad_curr + 0.5*quad_eta_curr
-#   
-#   log_alpha <- min(log_prop - log_curr, 0)
 
 sample_lambda_eta <- function(init, hyper, index, X, burn = TRUE){
   # the idea of this function is to sample lambda and eta all together
-  # we sample lambda from either a uniform or a von-mises distribution 
+  # we sample lambda from a normal distribution (recall that sin and cosine are periodic functions)
   # while we sample eta from the full conditional.
   # After a bit of math, it is possible to observe that the Metropolis-Hastings ratio
   # depend on the ratio between \pi(\lambda|... except eta) computed at the proposed and the current value
+  # this implies that theoretically this is a partially collapsed metropolis step within a gibbs sampler
   
   k_l <- init$k_l # number of landmarks
   alpha_i <- init$alphas[index] # size per unit i
   lambda_curr <- init$lambdas[index] # current lambda i
   eta_curr <- init$eta[index, ] # current eta i
   ones <- matrix(1, nrow = k_l, ncol = 1)
-  C_inv <- chol2inv(init$chol_c)
-  c_sum <- sum(C_inv)                 # 1'C^{-1}1
-  Cinv1 <- rowSums(C_inv)      # Cinv %*% 1_k, precomputed once
   lambda_prop <- lambda_curr + rnorm(n = 1, mean = 0, sd = sqrt(hyper$lambda_lambda[index] *  hyper$Sigma_lambda[index])) # proposed lambda
   #lambda_star <- runif(n = 1, 0, 2*pi)
   lambda_star <- lambda_prop
-  R_mat_star <- matrix(c(cos(lambda_star), -sin(lambda_star),
-                    sin(lambda_star),  cos(lambda_star)), byrow = TRUE, nrow = 2) # proposed Rotation
+  R_mat_star <- Rmat(lambda_star)
   Q_R_star <- (1/alpha_i^2) * t(R_mat_star) %*% init$Sigma_inv %*% R_mat_star # proposed inverse
+  c_sum <- k_l # 1_k^T %*% 1_k
   
-  
-  mean_res_star <- alpha_i * (init$mean + hyper$S_mat%*%init$W[,,index]) %*% R_mat_star # proposed mean configuration
-  #mean_res_star <- alpha_i * (init$mean + project_warp(hyper$S_mat, init$W, init$thetas)) %*% R_mat_star # proposed mean configuration
-  #project_warp(S_mat, init_param$W, init_param$thetas)
+  mean_res_star <- alpha_i * (init$mean + hyper$SW[,,index]) %*% R_mat_star # proposed mean configuration
   tilde_E_star <- X[,,index] - mean_res_star
   
-  quad_star  <- sum((t(tilde_E_star) %*% C_inv %*% tilde_E_star) * Q_R_star)
+  quad_star  <- sum((t(tilde_E_star)%*% tilde_E_star) * Q_R_star)
   Sigma_star <- solve(c_sum * Q_R_star + hyper$Sigma_eta_inv)
-  mu_eta_star <- t(as.matrix(Sigma_star %*% Q_R_star %*% (t(tilde_E_star) %*% Cinv1)))
+  mu_eta_star <- t(as.matrix(Sigma_star %*% Q_R_star %*% (t(tilde_E_star) %*% ones)))
   quad_eta_star <- as.numeric(
     mu_eta_star %*%
       solve(Sigma_star) %*%
@@ -176,9 +39,9 @@ sample_lambda_eta <- function(init, hyper, index, X, burn = TRUE){
   #Sigma_curr <- solve(init$k_l*init$Q_R[,,index] + hyper$Sigma_eta_inv)
   eta_matrix <- matrix(init$eta[index,], nrow = length(init$thetas), ncol = 2, byrow = T)
   tilde_E_curr <- X[,,index] - init$mean_i[,,index] + eta_matrix
-  quad_curr  <- sum((t(tilde_E_curr) %*% C_inv %*% tilde_E_curr) * init$Q_R[,,index])
+  quad_curr  <- sum((t(tilde_E_curr)  %*% tilde_E_curr) * init$Q_R[,,index])
   #quad_curr <- sum((tilde_E_curr %*% init$Q_R[,,index]) * tilde_E_curr)
-  mu_eta_curr <- t(as.matrix(Sigma_curr %*% init$Q_R[,,index] %*% (t(tilde_E_curr) %*% Cinv1)))
+  mu_eta_curr <- t(as.matrix(Sigma_curr %*% init$Q_R[,,index] %*% (t(tilde_E_curr) %*% ones)))
   #mu_eta_curr <- as.matrix(t(Sigma_curr %*%init$Q_R[,,index] %*%t(tilde_E_curr) %*% matrix(1, nrow = k_l)))
   quad_eta_curr <- as.numeric(
     mu_eta_curr %*%
@@ -193,13 +56,14 @@ sample_lambda_eta <- function(init, hyper, index, X, burn = TRUE){
     init$lambdas[index] <- lambda_star
     init$Q_R[,,index] <- Q_R_star
     init$eta[index, ] <- mvrnorm(n = 1, mu = mu_eta_star, Sigma = Sigma_star)
+    init$eta_array[,,index] <- matrix(init$eta[index, ], nrow = k_l, ncol = 2, byrow = TRUE)
     init$R[,,index] <- R_mat_star
     init$mean_i[,,index] <- mean_res_star + matrix(init$eta[index, ],
                                                    nrow = k_l, ncol = 2, byrow = TRUE)
     
-    E_final <- tilde_E_star - matrix(init$eta[index, ], nrow = k_l, ncol = 2, byrow = TRUE)
-    res_final <- backsolve(init$chol_c, E_final, transpose = TRUE)   # <- whitening added
-    init$residual[,,index] <- t(res_final) %*% res_final
+    E_final <- tilde_E_star - init$eta_array[,,index]
+    # res_final <- backsolve(init$chol_c, E_final, transpose = TRUE)   # <- whitening added
+    init$residual[,,index] <- crossprod(E_final)
     
     hyper$lambda_acc[index] <- hyper$lambda_acc[index] + 1
   }
@@ -208,10 +72,8 @@ sample_lambda_eta <- function(init, hyper, index, X, burn = TRUE){
     
     hyper$gamma_lambda <- min(0.01, hyper$t^(-0.5))
     hyper$lambda_lambda[index] <- hyper$lambda_lambda[index] * exp(hyper$gamma_lambda * (min(exp(log_alpha), 1) - hyper$lambda_opt))
-    # hyper$lambda_lambda[index] <- hyper$lambda_lambda[index]*exp(hyper$gamma_lambda *(min(exp(log_alpha), 1) - hyper$lambda_opt))
     hyper$Sigma_lambda[index] <- hyper$Sigma_lambda[index] + hyper$gamma_lambda *((init$lambdas[index] - hyper$mu_lambda[index])^2 - hyper$Sigma_lambda[index])
     hyper$mu_lambda[index] <- hyper$mu_lambda[index] + hyper$gamma_lambda *(init$lambdas[index] - hyper$mu_lambda[index])
-    #print(min(exp(log_alpha), 1) )
   }
   
   

@@ -1,13 +1,7 @@
-# Sample the smoothness/symmetry parameter ------
-
-# sample_tau <- function(init, a_new, b_new){
-#   
-#   init$tau <- rinvgamma(n = 1, shape = a_new, scale = b_new)
-# }
 
 
 
-sample_tau <- function(init, hyper, burn){
+sample_tau <- function(init, hyper, burn){# this function has been checked
   log_tau_proposal <- log(init$tau) + t(chol(hyper$lambda_tau* hyper$Sigma_tau))%*%rnorm(n = 2)
   tau_proposal <- exp(log_tau_proposal)
   log_tau_curr <- as.vector(log(init$tau))
@@ -38,7 +32,6 @@ sample_tau <- function(init, hyper, burn){
   
   if (burn == TRUE) {
     hyper$gamma_a <- min(0.01, hyper$t^(-0.5))
-    #hyper$lambda_a[i] <- hyper$lambda_a[i]*exp(hyper$gamma_a *(hyper$a_aver_a[i]/hyper$t - hyper$a_opt))
     hyper$lambda_tau <- hyper$lambda_tau*exp(hyper$gamma_a *(exp(log_alpha) - hyper$a_opts))
     hyper$Sigma_tau <- hyper$Sigma_tau + hyper$gamma_a *((log(init$tau) - hyper$mu_tau)%*% t(log(init$tau) - hyper$mu_tau)-
                                                            hyper$Sigma_tau)

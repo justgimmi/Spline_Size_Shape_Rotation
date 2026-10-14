@@ -229,18 +229,19 @@ sample_sigma2_ig <- function(init, hyper, X){
   n <- init$n
   D_p <- hyper$D_p
   S_mat <- hyper$S_mat
-  k_free <- ncol(D_p)
-  K <- crossprod(D_p, S_mat %*% D_p)
+  S_D_p <- S_mat %*% D_p
+  k_free <- hyper$k_free
+  K <- crossprod(D_p, S_D_p)
   Lk <- chol(K)
   Kinv <- chol2inv(Lk)
-  V <- median(diag(S_mat %*% D_p %*% Kinv %*% t(D_p) %*% t(S_mat)))
-  quad <- trace_function_psi_K(init$psi, K)
+  hyper$V <- median(diag(S_D_p %*% Kinv %*% t(S_D_p) ))
+  quad <- trace_function(init$psi, K)
   init$sigma_2 <- 1 / rgamma(1, shape = hyper$a_s2 + n * k_free,
-                             rate  = hyper$b_s2 * V + 0.5 * quad)
+                             rate  = hyper$b_s2 * hyper$V + 0.5 * quad)
   s2 <- init$sigma_2
-  lp_sig  <- hyper$a_s2 * log(V) - hyper$b_s2 * V / s2        # log p(sigma2 | V), theta/gamma-dependent part
-  logdetK <- as.numeric(determinant(K / s2, logarithm = TRUE)$modulus)
-  hyper$traces  <- -0.5 / s2 * trace_function_psi(init$W, S_mat) + n * logdetK + lp_sig
+  lp_sig  <- hyper$a_s2 * log(hyper$V) - hyper$b_s2 * hyper$V / s2        # log p(sigma2 | V), theta/gamma-dependent part
+  logdetK <- n*(chol_det(Lk) - k_free*log(s2))
+  hyper$traces  <- -0.5 / s2 * trace_function(init$W, S_mat) + logdetK + lp_sig
   hyper$log_lik <- log_density(init)
 }
 

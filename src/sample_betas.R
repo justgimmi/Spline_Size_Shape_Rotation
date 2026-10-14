@@ -2,33 +2,24 @@
 # we have decided to implement elliptical slice sampling for the betas
 
 eval_log_lik_beta <- function(gamma_cand, init, hyper, X, k_l){
-  n <- init$n
-  B_sim <- hyper$B_sim %*% hyper$C_bar
+  n <- init$n # number of units 
+  k_free <- hyper$k_free
+  B_sim <- hyper$B_sim %*% hyper$C_bar # basis function
   r <- exp(B_sim %*% as.vector(gamma_cand))# compute the current value of the radius
-  mu_mean_x <- r*cos(init$thetas)
-  mu_mean_y <- r*sin(init$thetas)
-  mean <- cbind(mu_mean_x, mu_mean_y) # average configuration 
-  S_mat_cand <- S_mat_constructor(hyper$S_mat, mean)
-  D_p_cand <- D_p_constructor(mean, init$thetas, hyper$C_bar%*%gamma_cand, r, hyper$n_basis, hyper$degree, D_p_prev = NULL)
-  #D_p_cand <- hyper$D_p
-  #W_cand <- init$W
-  mat_cand <- covariance_mat(init$mat_dist, mean)
-  C_cand <- init$C
-  chol_c_cand <- chol(C_cand)
-  mean_i <- array(NA, dim = c(k_l, 2, n))
-  residual <- array(NA, dim = c(2, 2, n))
+  mean <- cbind(r*cos(init$thetas),  r*sin(init$thetas)) # mean cand
+  S_mat_cand <- S_mat_constructor(mean) # S cand
+  D_p_cand <- D_p_constructor(mean, k_l) # D_p_cand
+  D_P_S_cand <- S_mat_cand %*% D_p_cand # proposed S x D_p (k x k-3)
+  W_cand <- tensor(D_p_cand, init$psi, 2, 1) # create the candidate value W
+  SW_cand <- tensor(S_mat_cand, W_cand, 2, 1)# candidate value of SW
+  app_cand <- sweep(SW_cand, MARGIN = c(1, 2), STATS = mean, FUN = "+")
+  mean_i <- init$mean_i # mean_i app
+  residual <- init$residual # residual app 
   
-  k_free <- ncol(hyper$D_p)
-  W_cand <- array(NA, dim = dim(init$W))
   for (i in 1:n) { # compute rotation matrix 
-    W_cand[,,i] <- D_p_cand %*%init$psi[,,i]
-
-    eta_matrix <- matrix(init$eta[i,], nrow = k_l, ncol = 2, byrow = T)
-    mean_i[,,i] <- init$alphas[i]*(mean + S_mat_cand %*% W_cand[,,i])%*%init$R[,,i] + eta_matrix # compute the mean configuration for every unit
-    #mean_i[,,i] <- init$alphas[i]*(mean + project_warp(S_mat_cand, W_cand, init$thetas))%*%init$R[,,i] + eta_matrix
-    
-    res <- backsolve(chol_c_cand,X[,,i] - mean_i[,,i],  transpose = TRUE)
-    residual[,,i] <- t(res)%*%res
+    mean_i[,,i] <- init$alphas[i]*app_cand[,,i]%*%init$R[,,i] + init$eta_array[,,i] # compute the mean configuration for every unit
+    res <- X[,,i] - mean_i[,,i]
+    residual[,,i] <- crossprod(res) # residual computation
   }
   
   val <- sum(init$Q_R[1,1,] * residual[1,1,] +
@@ -36,55 +27,31 @@ eval_log_lik_beta <- function(gamma_cand, init, hyper, X, k_l){
                init$Q_R[2,1,] * residual[1,2,] +
                init$Q_R[2,2,] * residual[2,2,])
   
-  val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma)) -
-    init$n*log(det(C_cand))
+  val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma))
   
-  K <- crossprod(D_p_cand, S_mat_cand %*% D_p_cand)
-  Lk <- tryCatch(chol(K), error = function(e) NULL)
-  if (is.null(Lk)) return(list(log_lik = -Inf, val_3 = 0))
-  dL <- diag(Lk)
-  if (max(dL) / min(dL) > 1e7) return(list(log_lik = -Inf, val_3 = 0))
-  Kinv    <- chol2inv(Lk)
-  w    <- 1 / diag(Kinv)
-  w_mat <- diag(w, nrow = length(w), ncol = length(w))
-  V <-  median(diag(S_mat_cand %*% D_p_cand %*% Kinv %*% t(D_p_cand) %*% t(S_mat_cand)))
-  # V <- 1
+  K <- crossprod(D_p_cand, D_P_S_cand) # variance matrix
+  Lk <- chol(K) # cholesky
+  Kinv    <- chol2inv(Lk) # inverse of the matrix 
+  V <-  median(diag(D_P_S_cand %*% Kinv %*% t(D_P_S_cand))) # V
   # lp_sig <- -log(V) - log(1 + (init$sigma_2/(V*hyper$a_sigma))^2)
   lp_sig  <- hyper$a_s2 * log(V) - hyper$b_s2 * V / init$sigma_2
-  logdetK <- as.numeric(determinant(K/init$sigma_2, logarithm = TRUE)$modulus)
-  
-  if (init$z == 1) {
-    k_free <- ncol(hyper$D_p)
-    val_3 <- -0.5 * (1/init$sigma_2) * trace_function_psi(W_cand, S_mat_cand) +
-      n*logdetK + lp_sig
+  logdetK <- n*(chol_det(Lk) - k_free*log(init$sigma_2))
+  val_3 <- -0.5 * (1/init$sigma_2) * trace_function(W_cand, S_mat_cand) +
+      logdetK + lp_sig
     # val_3 <- -0.5 * (1/init$sigma_2) * trace_function_psi(W_cand, S_mat_cand)+
     #    logdetK + lp_sig
-    log_lik <- -0.5 * val + val_2 + val_3
-  }
-  # else{
-  #   k_free <- ncol(hyper$D_p)
-  #   val_3 <- -0.5 * (1/init$sigma_2) * tr(t(init$psi) %*% w_mat %*% init$psi) + sum(log(w)) - k_free*log(init$sigma_2) + lp_sig
-  #     
-  #   log_lik <- -0.5 * val + val_2 + val_3
-  # }
+  log_lik <- -0.5 * val + val_2 + val_3
+
   return(list(log_lik =  log_lik, residual = residual, mean = mean, mean_i = mean_i,
-              S_mat = S_mat_cand, W = W_cand, D_p = D_p_cand, val_3 = val_3, r = r, 
-              C = C_cand, chol_c = chol_c_cand))
+              S_mat = S_mat_cand, W = W_cand, D_p = D_p_cand, val_3 = val_3, r = r,V = V, SW = SW_cand))
 }
 
 sample_beta <- function(init, hyper, X, k_l){
-  #gamma_samp <- rnorm(hyper$L)
-  #gamma_samp <- sqrt(init$tau) * solve(t(hyper$U_lambda), rnorm(hyper$L))
+
   gamma_samp <- solve(t(hyper$U_lambda), rnorm(hyper$L))
   #gamma_samp <- sqrt(init$tau)*rnorm(hyper$L)
   u <- runif(n = 1)
-  if (init$z == 1) {
-    thresh <- hyper$log_lik + hyper$traces + log(u)
-  }
-  else{
-  #thresh <- hyper$log_lik + hyper$traces + log(u)
-    thresh <- hyper$log_lik + hyper$traces + log(u)
-  }
+  thresh <- hyper$log_lik + hyper$traces + log(u)
   theta <- runif(n = 1)*2*pi
   theta_min <- theta - 2*pi
   theta_max <- theta
@@ -110,13 +77,7 @@ sample_beta <- function(init, hyper, X, k_l){
     #beta_prop <- beta_cand - (hyper$P_Null %*% beta_cand) + (hyper$P_Null %*% init$betas)
     res_cand <-eval_log_lik_beta(gamma_cand, init, hyper, X, k_l) 
   }
-  if (init$z == 1) {
-    hyper$log_lik <- res_cand$log_lik - res_cand$val_3
-  }
-  
-  else{
-    hyper$log_lik <- res_cand$log_lik - res_cand$val_3
-    }
+  hyper$log_lik <- res_cand$log_lik - res_cand$val_3
   init$gammas <- gamma_cand 
   init$betas <- hyper$C_bar %*% gamma_cand
   init$residual <- res_cand$residual
@@ -125,10 +86,10 @@ sample_beta <- function(init, hyper, X, k_l){
   init$W <- res_cand$W
   hyper$S_mat <- res_cand$S_mat
   hyper$D_p <- res_cand$D_p
+  hyper$SW <- res_cand$SW
   hyper$traces <- res_cand$val_3
   init$r <- res_cand$r
-  init$C <- res_cand$C
-  init$chol_c <- res_cand$chol_c
+  hyper$V <- res_cand$V
 
 }
 

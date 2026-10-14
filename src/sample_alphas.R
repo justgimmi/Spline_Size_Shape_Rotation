@@ -4,19 +4,14 @@ eval_log_lik_alpha <- function(alpha_candidate, hyper, init, k_l, X, i) {
   # This function is useful to evaluate the log_posterior distribution
   # alpha_candidate --> log_proposal of alpha
 
-  alphas_curr <- exp(alpha_candidate)
-  n <- init$n
-  R_i <- init$R[,,i]
-  eta_matrix <- matrix(init$eta[i,], nrow = k_l, ncol = 2, byrow = TRUE)
-  mean_i <- alphas_curr * (init$mean + hyper$S_mat%*%init$W[,,i]) %*% R_i + eta_matrix
-  #mean_i <- alphas_curr * (init$mean + project_warp(hyper$S_mat, init$W, init$thetas)) %*% R_i + eta_matrix
-  #project_warp(S_mat_cand, W_cand, init$thetas)
-  residual_part <- backsolve(init$chol_c, X[,,i] - mean_i, transpose = TRUE)
-  residual_cand <- t(residual_part)%*%residual_part
+  alphas_curr <- exp(alpha_candidate) # candidate value for alpha
+  n <- init$n # sample size 
+  R_i <- init$R[,,i] # Rotation matrix 
+  eta_matrix <- init$eta_array[,,i] # eta matrix 
+  mean_i <- alphas_curr * (init$mean + hyper$SW[,,i]) %*% R_i + eta_matrix # mean for i-th unit
+  residual_part <- X[,,i] - mean_i # residual computation
+  residual_cand <- crossprod(residual_part)
   Q_R <- (1 / (alphas_curr^2)) * t(R_i) %*% init$Sigma_inv %*% R_i
-  # quad_i <- sum(residual[, 1]^2) * Q_R[1, 1] +
-  #     2 * sum(residual[, 1] * residual[, 2]) * Q_R[1, 2] +
-  #     sum(residual[, 2]^2) * Q_R[2, 2]
   quad_i <- residual_cand[1, 1] * Q_R[1, 1] + 2 * residual_cand[1, 2] * Q_R[1, 2] + 
     residual_cand[2, 2] * Q_R[2, 2]
   log_lik_total <- - 0.5 * quad_i + (-2*k_l+ hyper$a)*alpha_candidate - hyper$b*alphas_curr
@@ -30,7 +25,7 @@ eval_log_lik_alpha <- function(alpha_candidate, hyper, init, k_l, X, i) {
 
 
 
-sample_alpha <- function(init, hyper, X, k_l, burn = TRUE){
+sample_alpha <- function(init, hyper, X, k_l, burn = TRUE){# this function has been checked
   n <- init$n
   #hyper$t <- hyper$t + 1
   for (i in 1:n) {

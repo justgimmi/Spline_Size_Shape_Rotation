@@ -1,6 +1,7 @@
 # Sigma sampler -----
 
-sample_Sigma <- function(init, hyper, k_l){
+sample_Sigma <- function(init, hyper, k_l){# this function has been checked
+  # this is the gibbs step for the Sigma parameter
   
   n <- init$n
   
@@ -42,26 +43,4 @@ sample_Sigma <- function(init, hyper, k_l){
   }
   hyper$log_lik <- log_density(init)
   
-  # out <- list()
-  # out$init <- init
-  # out$hyper <- hyper
-  # return(out)
-  
 }
-
-# 
-# sample_C <- function(init, hyper, X){
-#   n <- init$n; k <- init$k_l
-#   S <- matrix(0, k, k)
-#   for (i in 1:n) {
-#     E <- X[,,i] - init$mean_i[,,i]
-#     S <- S + E %*% init$Q_R[,,i] %*% t(E)
-#   }
-#   init$C      <- riwish(hyper$nu_C + 2 * n, hyper$Psi_C + S)
-#   init$chol_c <- chol(init$C)
-#   for (i in 1:n) {                                   # residuals E' C^-1 E must be refreshed
-#     res <- backsolve(init$chol_c, X[,,i] - init$mean_i[,,i], transpose = TRUE)
-#     init$residual[,,i] <- crossprod(res)
-#   }
-#   hyper$log_lik <- log_density(init)
-# }

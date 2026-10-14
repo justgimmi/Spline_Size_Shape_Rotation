@@ -1,17 +1,17 @@
-source("src/Packages.R")
-source("src/Utils.R")
-source("src/sample_tau.R")
-source("src/sample_thetas.R")
-source("src/sample_lambdas.R")
-source("src/sample_Sigma.R")
-source("src/sample_alphas.R")
-source("src/sample_betas.R")
-source("src/sample_eta.R")
-source("src/sample_phi.R")
-source("src/sample_psi.R")
-source("src/sample_sigma2.R")
-source("src/sample_xi.R")
-source("src/sample_z.R")
+source("src/Packages.R", keep.source = TRUE)
+source("src/Utils.R", keep.source = TRUE)
+source("src/sample_tau.R", keep.source = TRUE)
+source("src/sample_thetas.R", keep.source = TRUE)
+source("src/sample_lambdas.R", keep.source = TRUE)
+source("src/sample_Sigma.R", keep.source = TRUE)
+source("src/sample_alphas.R", keep.source = TRUE)
+source("src/sample_betas.R", keep.source = TRUE)
+source("src/sample_eta.R", keep.source = TRUE)
+source("src/sample_phi.R", keep.source = TRUE)
+source("src/sample_psi.R", keep.source = TRUE)
+source("src/sample_sigma2.R", keep.source = TRUE)
+source("src/sample_xi.R", keep.source = TRUE)
+source("src/sample_z.R", keep.source = TRUE)
 total_iter = 100000
 burnin = 30000
 thinning  = 10
@@ -68,9 +68,9 @@ RB_MCMC <- function(total_iter, burnin, thinning,
       # sample_z(init_env, hyper_env, X)
       sample_sigma2_ig(init_env, hyper_env, X)
       sample_psi(init_env, hyper_env, X)
-      check_state(init_env, hyper_env, X, tag = "NA")
-      #sample_sigma2(init_env, hyper_env, X, burn = burn)
-      check_state(init_env, hyper_env, X, tag = "NA")
+      # check_state(init_env, hyper_env, X, tag = "NA")
+      # #sample_sigma2(init_env, hyper_env, X, burn = burn)
+      # check_state(init_env, hyper_env, X, tag = "NA")
       hyper_env$log_lik <- log_density(init_env)
       
       #print(init_env$mean)
@@ -90,7 +90,7 @@ RB_MCMC <- function(total_iter, burnin, thinning,
       # init_env$sigma_2 <- rinvgamma(n = 1, shape = hyper_env$a_sigma_post, scale = hyper_env$b_sigma_post)
       #sample_phi(init_env, hyper_env, X, burn = TRUE)
       sample_Sigma(init_env, hyper_env, k_l)
-      check_state(init_env, hyper_env, X, tag = "NA")
+      # check_state(init_env, hyper_env, X, tag = "NA")
       #print(init_env$z)
       #print(init_env$sigma_2)
       # print(init_env$psi)
@@ -119,31 +119,31 @@ RB_MCMC <- function(total_iter, burnin, thinning,
         # print(hyper_env$Eigen_vector_null%*%init_env$betas)
         # print(init_env$Sigma)
         # print(init_env$alphas)
-        print(init_env$thetas)
-        print(init_env$C)
-        #print(init_env$thetas_sorted)
-        #print(init_env$lambdas)
-        #print(init_env$alphas)
-        print(hyper_env$tau_acc/j)
-        print(init_env$tau)
-        print(init_env$Sigma)
-        #print(init_env$eta)
-        print(hyper_env$lambda_acc/j)
-        print(hyper_env$a_aver_a/j)
-        print(hyper_env$phi_acc/j)
-        print(init_env$phi)
-        print(paste("sigma2", init_env$sigma_2))
-        print(hyper_env$sigma_acc_cp/j)
-        print(hyper_env$sigma_acc_ncp/j)
-        print(init_env$W[,,1])
+        # print(init_env$thetas)
+        # print(init_env$C)
+        # #print(init_env$thetas_sorted)
+        # #print(init_env$lambdas)
+        # #print(init_env$alphas)
+        # print(hyper_env$tau_acc/j)
+        # print(init_env$tau)
+        # print(init_env$Sigma)
+        # #print(init_env$eta)
+        # print(hyper_env$lambda_acc/j)
+        # print(hyper_env$a_aver_a/j)
+        # print(hyper_env$phi_acc/j)
+        # print(init_env$phi)
+        # print(paste("sigma2", init_env$sigma_2))
+        # print(hyper_env$sigma_acc_cp/j)
+        # print(hyper_env$sigma_acc_ncp/j)
+        # print(init_env$W[,,1])
   
         
         tryCatch(plot_status(init_env, hyper_env, X, plot_file, hyper_env$t, i_unit = 1),
                  error = function(e) message("plot_status fallito: ", conditionMessage(e)))
         tryCatch(plot_status(init_env, hyper_env, X, plot_file, hyper_env$t, i_unit = 10),
                  error = function(e) message("plot_status fallito: ", conditionMessage(e)))
-        print(hyper_env$S_mat %*% hyper_env$D_p %*% solve(t(hyper_env$D_p)%*%hyper_env$S_mat %*% hyper_env$D_p) %*% 
-                         t(hyper_env$D_p) %*% t(hyper_env$S_mat ))
+        # print(hyper_env$S_mat %*% hyper_env$D_p %*% solve(t(hyper_env$D_p)%*%hyper_env$S_mat %*% hyper_env$D_p) %*% 
+        #                  t(hyper_env$D_p) %*% t(hyper_env$S_mat ))
       }
     
       
@@ -185,15 +185,15 @@ RB_MCMC <- function(total_iter, burnin, thinning,
   return(out)
   
 }
-check_state <- function(init, hyper, X, tag){
-  chk <- eval_log_lik_beta(init$gammas, init, hyper, X, init$k_l)
-  d <- c(lik    = abs((chk$log_lik - chk$val_3) - log_density(init)),
-         prior  = abs(chk$val_3 - hyper$traces),
-         mean_i = max(abs(chk$mean_i - init$mean_i)),
-         W      = max(abs(chk$W - init$W)))
-  if (any(d > 1e-6)) message(sprintf("[%s] ", tag), paste(names(d), signif(d, 3), collapse = " | "))
-  invisible(d)
-}
+# check_state <- function(init, hyper, X, tag){
+#   chk <- eval_log_lik_beta(init$gammas, init, hyper, X, init$k_l)
+#   d <- c(lik    = abs((chk$log_lik - chk$val_3) - log_density(init)),
+#          prior  = abs(chk$val_3 - hyper$traces),
+#          mean_i = max(abs(chk$mean_i - init$mean_i)),
+#          W      = max(abs(chk$W - init$W)))
+#   if (any(d > 1e-6)) message(sprintf("[%s] ", tag), paste(names(d), signif(d, 3), collapse = " | "))
+#   invisible(d)
+# }
 
 # hyper <- hyperparameters(2, 0.5, 8, 3, width_theta = 1, m = 6, nu = 10,
 #                          psi = psi,n = dim(X)[3], a = 0.01, b = 0.01, a_phi = a_phi, b_phi = b_phi, X = X)
@@ -261,9 +261,12 @@ hyper$a_sigma
 init$Z
 tic()
 par(mfrow = c(1, 3))
-MCMC_samp <- RB_MCMC(total_iter = 2e5, burnin = 50000, thinning  = 10, X = X, 
+library(profvis)
+profvis(expr = {
+  MCMC_samp <- RB_MCMC(total_iter = 2e5, burnin = 50000, thinning  = 10, X = X, 
                      init = init, hyper = hyper)
-toc()
+})
+  toc()
 hyper$b_phi
 init$mean
 mean(MCMC_samp$output$z)

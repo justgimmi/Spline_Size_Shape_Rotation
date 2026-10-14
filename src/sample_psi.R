@@ -95,22 +95,21 @@
 
 
 sample_psi <- function(init, hyper, X) {
-  n   <- init$n
-  k_l <- init$k_l
-  r_curr <- exp(Basis_Construction(init$thetas, hyper$n_basis, hyper$degree) %*% init$betas)
-  D_p <- D_p_constructor(init$mean, init$thetas, init$betas, r_curr,
-                         hyper$n_basis, hyper$degree, D_p_prev = hyper$D_p)
-  k_free  <- ncol(D_p)
+  n   <- init$n # sample size 
+  k_l <- init$k_l # number of landmarks 
+  r_curr <- init$r # current value of the radius
+  D_p <- hyper$D_p #current D_p
+  k_free  <- hyper$k_free # number of free directions for the warping
   S_mat   <- hyper$S_mat
-  K       <- crossprod(D_p, S_mat %*% D_p)          # prior precision of each column of psi_i (x sigma2)
-  Kinv    <- chol2inv(chol(K))
+  S_D_p <- S_mat %*% D_p
+  K       <- crossprod(D_p, S_D_p)          # prior precision of each column of psi_i (x sigma2)
+  Lk <- chol(K)
+  Kinv    <- chol2inv(Lk)
   Sigma_inv <- init$Sigma_inv
   sigma_2   <- init$sigma_2
-  C_inv     <- chol2inv(init$chol_c)
 
   # 1. G = D' S C^-1 S D  (common to all subjects)
-  Dp_S <- t(D_p) %*% S_mat
-  G    <- Dp_S %*% C_inv %*% t(Dp_S)
+  G    <- t(S_D_p)%*% S_D_p
 
   # 2. Precision of vec(psi_i): the same for every subject (alpha_i and R_i cancel)
   Omega_psi <- kronecker(Sigma_inv, G) + kronecker(diag(2), K / sigma_2)
@@ -120,10 +119,10 @@ sample_psi <- function(init, hyper, X) {
   for (i in 1:n) {
     R_i     <- init$R[, , i]
     alpha_i <- init$alphas[i]
-    eta_mat <- matrix(init$eta[i, ], nrow = k_l, ncol = 2, byrow = TRUE)
+    eta_mat <- init$eta_array[,,i]
 
     Z_i <- X[, , i] - alpha_i * (init$mean %*% R_i) - eta_mat
-    M_i <- (1 / alpha_i) * (Dp_S %*% C_inv %*% Z_i %*% t(R_i))
+    M_i <- (1 / alpha_i) * (t(S_D_p)  %*% Z_i %*% t(R_i))
     rhs <- as.vector(M_i %*% Sigma_inv)                          # = vec(M_i Sigma^-1)
 
     mu_psi <- backsolve(U_omega, forwardsolve(t(U_omega), rhs))
@@ -133,19 +132,20 @@ sample_psi <- function(init, hyper, X) {
     init$W[, , i]   <- D_p %*% init$psi[, , i]
 
     init$mean_i[, , i] <- alpha_i * (init$mean + S_mat %*% init$W[, , i]) %*% R_i + eta_mat
-    res <- backsolve(init$chol_c, X[, , i] - init$mean_i[, , i], transpose = TRUE)
+    res <- X[, , i] - init$mean_i[, , i]
     init$residual[, , i] <- crossprod(res)
   }
 
   # 4. Prior term 
-  V <- median(diag(S_mat %*% D_p %*% Kinv %*% t(D_p) %*% t(S_mat)))
+  hyper$V <- median(diag(S_D_p %*% Kinv %*% t(S_D_p)))
   # V <- 1
   #lp_sig  <- -log(V) - log(1 + (sigma_2 / (V * hyper$a_sigma))^2)
-  lp_sig  <- hyper$a_s2 * log(V) - hyper$b_s2 * V / init$sigma_2
-  logdetK <- as.numeric(determinant(K / sigma_2, logarithm = TRUE)$modulus)
-  hyper$traces <- -0.5 / sigma_2 * trace_function_psi(init$W, S_mat) + n * logdetK + lp_sig
+  lp_sig  <- hyper$a_s2 * log(hyper$V) - hyper$b_s2 * hyper$V / init$sigma_2
+  logdetK <- n*(chol_det(Lk) - k_free*log(init$sigma_2))
+  hyper$traces <- -0.5 / sigma_2 * trace_function(init$W, S_mat) + logdetK + lp_sig
 
   hyper$D_p <- D_p
   init$r   <- r_curr
   hyper$log_lik  <- log_density(init)
+  hyper$SW <- tensor(S_mat, init$W, 2, 1)
 }
