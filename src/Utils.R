@@ -23,8 +23,8 @@ Basis_Construction <- function(thetas, L, degree = 3, derivatives = FALSE){
 
   total_knots <- c(seq(0 - degree*delta, 0, by = delta), knots_base, seq(2*pi , 2*pi + degree*delta,
                                                                          by = delta))
-  Basis <- splineDesign(total_knots, thetas, ord = degree + 1, outer.ok = FALSE,
-                        derivs = F) # Basis construction
+  # Basis <- splineDesign(total_knots, thetas, ord = degree + 1, outer.ok = FALSE,
+  #                       derivs = F) # Basis construction
   
   if (derivatives == FALSE) {
     Basis <- splineDesign(total_knots, thetas, ord = degree + 1, outer.ok = FALSE,
@@ -106,9 +106,6 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   }
   thetas[thetas < 0]  <- thetas[thetas < 0] + 2*pi # be aware of the domain [0, 2pi]
   thetas <- sort(thetas) # sort the angles
-  mat_dist <- diag(0, nrow = length(thetas), ncol = length(thetas)) 
-  mat_dist <- covariance_mat(mat_dist, thetas)
-  C <- exp(-mat_dist/phi) 
   
   # basis block -----
   n_basis     <- n_int_knots + degree # final number of basis
@@ -129,10 +126,10 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   Eigen_vector <- eig_vecs[, keep, drop = FALSE] # Eigen vectors with non null eigen values
   Eigen_vector_null <- t(eig_vecs[, !keep, drop = FALSE]) # eigen vectors eith null eigen values
   R <- Basis_Construction(0, n_int_knots, degree) - Basis_Construction(2*pi, n_int_knots, degree) # (B(0) - B(2pi))
-  #R1 <- Basis_Construction(0, n_int_knots, degree, derivatives = 1) - Basis_Construction(2*pi, n_int_knots, degree, derivatives = 1) # (B'(0) - B'(2pi))
-  #R2 <- Basis_Construction(0, n_int_knots, degree, derivatives = 2) - Basis_Construction(2*pi, n_int_knots, degree, derivatives = 2)
-  #A <- rbind(Eigen_vector_null, R, R1, R2)
-  A <- rbind(Eigen_vector_null, R)
+  R1 <- Basis_Construction(0, n_int_knots, degree, derivatives = 1) - Basis_Construction(2*pi, n_int_knots, degree, derivatives = 1) # (B'(0) - B'(2pi))
+  R2 <- Basis_Construction(0, n_int_knots, degree, derivatives = 2) - Basis_Construction(2*pi, n_int_knots, degree, derivatives = 2)
+  A <- rbind(Eigen_vector_null, R, R1, R2)
+  # A <- rbind(Eigen_vector_null, R)
   aux_eig <- eigen(t(A) %*% A)
   A_bar <- t(aux_eig$vectors[,aux_eig$values < tol])
   union_matrix <- rbind(A, A_bar)
@@ -157,7 +154,7 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   mu_mean_x <- r*cos(thetas)
   mu_mean_y <- r*sin(thetas)
   mu_mean <- cbind(mu_mean_x, mu_mean_y) # mean configuration 
-  k_free <- K_l - 5
+  k_free <- K_l - 3
   S_mat <- S_mat_constructor(mu_mean)
   # init <- list()
   # hyper <- list()
@@ -169,39 +166,33 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   # hyper$degree <- degree
   
   
-  D_p <- D_p_raw(mu_mean, k_l)
+  D_p <- D_p_constructor(mu_mean, K_l)
+  psi <- array(0, dim = c(k_free, 2, n))
   if (sigma_2 == 0 && indep_error == TRUE) {
     Precision <- diag(1, nrow = k_free)
     U_prec <- chol(Precision)
-    k_free <- ncol(D_p)  # k - 5
-    psi <- matrix(0, nrow = k_free, ncol = 2)
-    W <- D_p %*% psi
   }
   
   else if(sigma_2 != 0 && indep_error == TRUE){
     Precision <- diag(1/sigma_2, nrow = k_free)
     U_prec <- chol(Precision)
     k_free <- ncol(D_p)  # k - 5
-    
-    Z <- matrix(rnorm(k_free * 2), nrow = k_free, ncol = 2)
-    psi <- backsolve(U_prec, Z)
-    W <- D_p %*% psi
+    for (i in 1:n) {
+      Z <- matrix(rnorm(k_free * 2), nrow = k_free, ncol = 2)
+      psi[,,i] <- backsolve(U_prec, Z)
+    }
   }
   else{
     Precision <- (1 / sigma_2) * t(D_p) %*% S_mat %*% D_p
     U_prec <- chol(Precision)
-    k_free <- ncol(D_p)  # k - 3
     
-    Z <- matrix(rnorm(k_free * 2), nrow = k_free, ncol = 2)
-    psi <- backsolve(U_prec, Z)
-    W <- D_p %*% psi
+    for (i in 1:n) {
+      Z <- matrix(rnorm(k_free * 2), nrow = k_free, ncol = 2)
+      psi[,,i] <- backsolve(U_prec, Z)
+    }
   }
-  U_prec <- chol(Precision)
-  k_free <- ncol(D_p)  # k - 3
+  W <- tensor(D_p, psi, 2, 1)
 
-  # Z <- matrix(rnorm(k_free * 2), nrow = k_free, ncol = 2)
-  # psi <- backsolve(U_prec, Z)
-  # W <- D_p %*% psi
   R <- array(NA, dim = c(2, 2, n))
   mu_i <- array(NA, dim = c(K_l, 2, n))
   if (length(lambda) == 1) {
@@ -222,7 +213,7 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
     R[,,i] <- matrix(c(cos(lambda[i]), -sin(lambda[i]), sin(lambda[i]), cos(lambda[i])), 
                      byrow = T, nrow = 2, ncol = 2)
     eta_matrix <- matrix(eta[i,], nrow = K_l, ncol = 2, byrow = T)
-    mu_i[,,i] <- alphas[i]*(mu_mean + S_mat %*% W) %*%R[,,i] + eta_matrix # compute the mean configuration for every unit
+    mu_i[,,i] <- alphas[i]*(mu_mean + S_mat %*% W[,,i]) %*%R[,,i] + eta_matrix # compute the mean configuration for every unit
   }
   
   s_x2 <- 9 * 1e-4
@@ -238,7 +229,7 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
     # to sample we use the fact that X \sim MN(mu_{i}, I_k, Sigma)
     Sigmas <- alphas[i]^2 *t(R[,,i])%*%Sigma_e%*%R[,,i]
     I <- diag(K_l)
-    X[,,i] <- t(chol(C))%*%matrix(rnorm(n = K_l * 2), nrow = K_l, ncol = 2)%*%chol(Sigmas) + mu_i[,,i]
+    X[,,i] <- matrix(rnorm(n = K_l * 2), nrow = K_l, ncol = 2)%*%chol(Sigmas) + mu_i[,,i]
     #X[,,i] <- chol(I)%*%matrix(rnorm(n = K_l * 2), nrow = K_l, ncol = 2)%*%t(chol(Sigma_e)) +  mu_i[,,i]
     }
   
@@ -278,12 +269,21 @@ Rmat <- function(angle) { # rotation matrix
 }
 
 
+# S_mat_constructor <- function(mu){
+#   # mu: value of the latent mean K \times K
+#   # this function build a conditional positive definite matrix 
+#   mat <- dist(mu)
+#   mat[mat > 0] <- mat[mat > 0]^2 * log(mat[mat > 0])
+#   return(as.matrix(mat))
+# }
+
 S_mat_constructor <- function(mu){
   # mu: value of the latent mean K \times K
   # this function build a conditional positive definite matrix 
-  mat <- dist(mu)
-  mat[mat > 0] <- mat[mat > 0]^2 * log(mat[mat > 0])
-  return(as.matrix(mat))
+  dx <- outer(mu[, 1], mu[, 1], "-")
+  dy <- outer(mu[, 2], mu[, 2], "-")
+  d2 <- dx * dx + dy * dy
+  0.5 * d2 * log(d2 + (d2 == 0))
 }
 
 # D_p_constructor <- function(mu){
@@ -329,6 +329,7 @@ D_p_constructor <- function(mu, k) {
   A <- rbind(1, t(mu))          # zero mean displacement (3 x k)
   sv <- svd(A, nu = 0, nv = k)  # svd 
   sv$v[, 4:k, drop = FALSE]   # free dimensions
+  #qr.Q(qr(t(A)), complete = TRUE)[, 4:k, drop = FALSE]
 }
 # covariance_mat <- function(mat, thetas){
 #   # thetas: vector of angles
@@ -345,23 +346,24 @@ D_p_constructor <- function(mu, k) {
 #   return(mat)
 # }
 
-covariance_mat <- function(mat, mu){
-  # thetas: vector of angles
-  # mat: K x K covariance matrix
-  # phi: scale parameter of the exponential covariance function
-  # k_l <- nrow(mu)
-  # for (i in 1:k_l) {
-  #   for (j in 1:k_l) {
-  #     #d <- min(2*pi - abs(thetas[i] - thetas[j]), abs(thetas[i] - thetas[j]))
-  #     mat[i, j] <- min(2*pi - abs(thetas[i] - thetas[j]), abs(thetas[i] - thetas[j]))
-  #     mat[j, i] <- mat[i, j]
-  #   }
-  # }
-  D  <- as.matrix(dist(mu))
-  k <- nrow(mu)
-  # D <- D / mean(D[cbind(1:k, c(2:k, 1))])
-  return(D)
-}
+# covariance_mat <- function(mat, mu){
+#   # thetas: vector of angles
+#   # mat: K x K covariance matrix
+#   # phi: scale parameter of the exponential covariance function
+#   # k_l <- nrow(mu)
+#   # for (i in 1:k_l) {
+#   #   for (j in 1:k_l) {
+#   #     #d <- min(2*pi - abs(thetas[i] - thetas[j]), abs(thetas[i] - thetas[j]))
+#   #     mat[i, j] <- min(2*pi - abs(thetas[i] - thetas[j]), abs(thetas[i] - thetas[j]))
+#   #     mat[j, i] <- mat[i, j]
+#   #   }
+#   # }
+#   D  <- as.matrix(dist(mu))
+#   k <- nrow(mu)
+#   # D <- D / mean(D[cbind(1:k, c(2:k, 1))])
+#   return(D)
+# }
+
 
 
 init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, gammas, phi, n){
@@ -515,9 +517,9 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree, nu, psi, n, a, b, Sig
   
   
   hyper$a_chi <- 2
-  hyper$b_chi <- 40
-  hyper$a_s2 <- 2
-  hyper$b_s2 <- 2
+  hyper$b_chi <- 2
+  hyper$a_s2 <- 1
+  hyper$b_s2 <- 1
   return(hyper)
 }
 
@@ -553,19 +555,48 @@ create_output <- function(mcmc_iter, k_l, n, L){
   output$gammas <- matrix(NA, nrow = mcmc_iter, ncol = L - 4)
   output$eta <- array(NA, c(mcmc_iter, n, 2))
   output$mean_i <- list()
+  output$pred_i <- list()
   output$mean <- array(NA, c(mcmc_iter, k_l, 2))
   output$phi <- matrix(NA, nrow = mcmc_iter, ncol =1)
   output$psi <- list()
   output$W <- list()
   # output$psi <- array(NA, dim = c(mcmc_iter, k_l - 5, 2))
   output$sigma_2 <- matrix(NA, nrow = mcmc_iter, ncol = 1)
+  output$sigma_2_epurated <- matrix(NA, nrow = mcmc_iter, ncol = 1)
+  output$dis <- matrix(NA, nrow = mcmc_iter, ncol = n)
   #output$z <- matrix(NA, nrow = mcmc_iter, ncol = 1)
   return(output)
 }
 
 
 
-
+compute_proc_dist <- function(init, X, X_pred){
+  n <- dim(X)[3]
+  k_l <- dim(X)[1]
+  p <- 2
+  Sigma_e <- init$Sigma
+  dis <- numeric(n)
+  for (i in 1:n) {
+    M_subject <- init$mean_i[,,i]
+    
+    # 2) Affine component
+    alpha_i   <- init$alphas[i]
+    lambda_i  <- init$lambdas[i]
+    
+    # 3) Rotation matrix 
+    R_lambda <- Rmat(lambda_i)
+    
+    # 4) Spatial covariance
+    Sigma_spatial_i <- (alpha_i^2) * (t(R_lambda) %*% Sigma_e %*% R_lambda)
+    L_Sigma_spatial <- t(chol(Sigma_spatial_i)) 
+    Z <- matrix(rnorm(k_l * p), nrow = k_l, ncol = p)
+    # E_i <- chol(C) %*% Z %*% t(L_Sigma_spatial)
+    E_i <- Z %*% t(L_Sigma_spatial)
+    X_pred[,,i]<- M_subject + E_i
+    dis[i] <- sin(riemdist(X[,,i],X_pred[,,i]))
+  }
+  return(list(dis = dis, X_pred = X_pred))
+}
 
 
 mean_constructor <- function(n_basis, degree, init, hyper, X){
@@ -612,6 +643,8 @@ mean_constructor <- function(n_basis, degree, init, hyper, X){
     #init_param$residual[,,i] <- t(X[,,i] - init_param$mean_i[,,i])%*%init_param$C %*% (X[,,i] - init_param$mean_i[,,i])
     init$residual[,,i] <- t(res)%*%res
   }
+  hyper$mean_i_array <- init$mean_i
+  hyper$residual_array <- init$residual
   K <- t(hyper$D_p) %*% hyper$S_mat%*% hyper$D_p
   Kinv <- chol2inv(chol(K))
   w    <- 1 / diag(Kinv)
@@ -630,6 +663,26 @@ mean_constructor <- function(n_basis, degree, init, hyper, X){
 }
 
 
+# candidates <- function(init, hyper){ # this is the most useful object in this entire code
+#   # the main problem of using elliptical sampling is that you do not know how many times you
+#   # are going to call the density function and it is possible that in this way you create quite
+#   # a lot of objects
+#   cand <- list()
+#   cand$mean_i_array <- init$mean_i
+#   cand$residual_array <- init$residual
+#   cand$theta_cand <- init$thetas
+#   
+#   
+#   k    <- nrow(mean_mat)
+#   S    <- S_mat_constructor(mean_mat)
+#   D    <- D_p_constructor(mean_mat, k)
+#   SD   <- S %*% D
+#   K    <- crossprod(D, SD)
+#   Lk   <- chol(K)
+#   Kinv <- chol2inv(Lk)
+# }
+
+
 trace_function <- function(W, S_mat) {
   # this function is very useful to compute trace functions and it is surprisingly fast
   # it is used either to compute the \sum_{i = 1}^{n} tr(W_{i}^T S_mat W_i)
@@ -645,58 +698,68 @@ chol_det <- function(Lk){
 }
 
 
-log_density <- function(init){
-  # this function compute the log_likelihood associated to the model
-  val <- sum(init$Q_R[1,1,] * init$residual[1,1,] +
-               init$Q_R[1,2,] * init$residual[2,1,] +
-               init$Q_R[2,1,] * init$residual[1,2,] +
-               init$Q_R[2,2,] * init$residual[2,2,])
-  
-  # val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma)) - ((init$n))*log(det(init$C))
-  val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma))
-  return(-0.5 * val + val_2)
+# log_density <- function(init){
+#   # this function compute the log_likelihood associated to the model
+#   val <- sum(init$Q_R[1,1,] * init$residual[1,1,] +
+#                init$Q_R[1,2,] * init$residual[2,1,] +
+#                init$Q_R[2,1,] * init$residual[1,2,] +
+#                init$Q_R[2,2,] * init$residual[2,2,])
+#   
+#   # val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma)) - ((init$n))*log(det(init$C))
+#   val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*determinant(init$Sigma, logarithm = T)$modulus
+#   return(-0.5 * val + val_2)
+# }
+
+log_density <- function(init) {
+  Sg  <- init$Sigma
+  ldS <- log(Sg[1, 1] * Sg[2, 2] - Sg[1, 2] * Sg[2, 1])        # log det of a 2x2
+  val   <- sum(init$Q_R * init$residual)                        # = sum_i tr(Q_i res_i), res_i symmetric
+  val_2 <- -2 * init$k_l * sum(log(init$alphas)) - 0.5 * init$n * init$k_l * ldS
+  -0.5 * val + val_2
 }
 
 
-
-
-sample_posterior_predictive <- function(output_mcmc, subject_idx) { # Sample from the posterior predictive distribution
-  
-  n_saved_iter <- dim(output_mcmc$mean)[1]
-  k_l <- dim(output_mcmc$mean)[2] # Numero di landmark (K)
-  p <- 2                           # Dimensione spaziale (x, y)
-  
-  X_pred <- array(0, dim = c(k_l, p, n_saved_iter))
-  mat_dist <- matrix(0, nrow = k_l, ncol = k_l)
+extract_mean_i <- function(output_mcmc, subject_idx){
+  n_saved_iter <- dim(output_mcmc$mean)[1] # number of iterations
+  k_l <- dim(output_mcmc$mean)[2] # number of landmarks
+  p <- 2     
+  mean_i <- array(0, dim = c(k_l, p, n_saved_iter))
+  pred_i <- array(0, dim = c(k_l, p, n_saved_iter))
   for (i in 1:n_saved_iter) {
-    # 1. Recupera la media già calcolata del soggetto i a questa iterazione
+    mean_i[,,i] <- output_mcmc$mean_i[[i]][, , subject_idx]
+    pred_i[,,i] <- output_mcmc$pred_i[[i]][, , subject_idx]
+  }
+  return(list(mean_i = mean_i, pred_i = pred_i))
+}
+
+sample_posterior_predictive <- function(output_mcmc, subject_idx) { 
+  # This function is quite useful because it allow a direct sampling from the posterior predictive distrubution 
+  n_saved_iter <- dim(output_mcmc$mean)[1] # number of MCMC iterations 
+  k_l <- dim(output_mcmc$mean)[2] # number of landmarks
+  p <- 2                           # dimension
+  X_pred <- array(0, dim = c(k_l, p, n_saved_iter)) # final object 
+  for (i in 1:n_saved_iter) {
+    # 1) Mean per subject
     M_subject <- output_mcmc$mean_i[[i]][, , subject_idx]
     
-    # 2. Recupera i parametri di trasformazione del soggetto e la Sigma_e globale
+    # 2) Affine component
     alpha_i   <- output_mcmc$alphas[i, subject_idx]
     lambda_i  <- output_mcmc$lambdas[i, subject_idx]
     Sigma_e   <- output_mcmc$Sigma[i, , ]
     
-    # 3. Costruisci la matrice di rotazione R(\lambda_i)
-    R_lambda <- matrix(c(cos(lambda_i), -sin(lambda_i),
-                         sin(lambda_i),  cos(lambda_i)), 
-                       nrow = 2, ncol = 2, byrow = TRUE)
+    # 3) Rotation matrix 
+    R_lambda <- Rmat(lambda_i)
     
-    # 4. Calcola la covarianza spaziale specifica del soggetto (2 x 2)
-    # \alpha_i^2 * t(R_lambda) %*% Sigma_e %*% R_lambda
+    # 4) Spatial covariance
     Sigma_spatial_i <- (alpha_i^2) * (t(R_lambda) %*% Sigma_e %*% R_lambda)
-    L_Sigma_spatial <- t(chol(Sigma_spatial_i)) # Cholesky inferiore (2 x 2)
-    mat_dist <- covariance_mat(mat_dist, output_mcmc$theta[i,])
-    C <- exp(-mat_dist/output_mcmc$phi[i])
-    # 5. Campiona la matrice di rumore bianco standard Z (K x 2)
+    L_Sigma_spatial <- t(chol(Sigma_spatial_i)) 
+    # mat_dist <- covariance_mat(mat_dist, output_mcmc$theta[i,])
+    # C <- exp(-mat_dist/output_mcmc$phi[i])
+    # 5) Sampling scheme 
+    
     Z <- matrix(rnorm(k_l * p), nrow = k_l, ncol = p)
-    
-    # 6. Trasforma il rumore solo a destra (poiché L_C è l'identità)
-    # E_i = Z %*% t(L_Sigma_spatial)
-    
-    E_i <- chol(C) %*% Z %*% t(L_Sigma_spatial)
-    
-    # Configurazione finale predetta per l'iterazione i
+    # E_i <- chol(C) %*% Z %*% t(L_Sigma_spatial)
+    E_i <- Z %*% t(L_Sigma_spatial)
     X_pred[, , i] <- M_subject + E_i
   }
   
@@ -766,6 +829,7 @@ init_mu_star <- function(X,
   # B     <- Basis_Construction(theta,     n_basis, degree)   ##      evaluate at the angles used by mu*
   if (start == "gpa") {
     log_r <- log(sqrt(rowSums(mean_shape^2)))
+    log_r <- log_r - mean(log_r)
     beta0 <- solve(crossprod(B_fit) + ridge * diag(ncol(B_fit)), crossprod(B_fit, log_r))
     gamma <- solve(crossprod(hyper$C_bar), crossprod(hyper$C_bar, beta0))
   } else {
@@ -922,8 +986,8 @@ plot_status <- function(init_env, hyper_env, X, file, it, i_unit = 1) {
   plot(closed(mu_star), type = "o", pch = 19, col = "darkblue", asp = 1,
        xlim = range(mu_star[, 1], mu_warp[, 1]), ylim = range(mu_star[, 2], mu_warp[, 2]),
        xlab = "", ylab = "",
-       main = sprintf("mu*  | iter %d\nsigma2 = %.3g  phi = %.3g  tau = (%.3g, %.3g)",
-                      it, init_env$sigma_2, init_env$phi, init_env$tau[1], init_env$tau[2]))
+       main = sprintf("mu*  | iter %d\nsigma2 = %.3g  tau = (%.3g, %.3g)",
+                      it, init_env$sigma_2, init_env$tau[1], init_env$tau[2]))
   lines(closed(mu_warp), lty = 2, lwd = 2, col = "red")
   text(mu_star, labels = seq_len(nrow(mu_star)), pos = 3, cex = 0.6)
   legend("topright", c("mu*", "mu* + SW"), col = c("darkblue", "red"),
@@ -943,3 +1007,37 @@ plot_status <- function(init_env, hyper_env, X, file, it, i_unit = 1) {
   
   # ok <- TRUE
 }
+
+
+##### Rccp for some functions #####
+Rcpp::cppFunction(depends = "RcppArmadillo", code = '
+Rcpp::List units_loglik(const arma::mat& mean, const arma::mat& Dp,
+                        const arma::mat& SDp, const arma::cube& psi,
+                        const arma::cube& R, const arma::cube& eta,
+                        const arma::cube& X, const arma::cube& Q,
+                        const arma::vec& alphas, bool keep = false) {
+  const arma::uword k = X.n_rows, n = X.n_slices;
+  double val = 0.0, trace = 0.0;
+  arma::cube mean_i, resid, SW, W;
+  if (keep) {
+    mean_i.set_size(k, 2, n); resid.set_size(2, 2, n);
+    SW.set_size(k, 2, n);     W.set_size(k, 2, n);
+  }
+  for (arma::uword i = 0; i < n; ++i) {
+    arma::mat wi  = Dp  * psi.slice(i);           // W_i
+    arma::mat swi = SDp * psi.slice(i);           // S W_i
+    arma::mat M   = alphas(i) * (mean + swi) * R.slice(i) + eta.slice(i);
+    arma::mat Y   = X.slice(i) - M;
+    arma::mat r   = Y.t() * Y;
+    val   += arma::accu(Q.slice(i) % r);          // sum(Q * residual)
+    trace += arma::accu(wi % swi);                // tr(W_i^T S W_i)
+    if (keep) { W.slice(i) = wi; SW.slice(i) = swi;
+                mean_i.slice(i) = M; resid.slice(i) = r; }
+  }
+  if (!keep) return Rcpp::List::create(Rcpp::Named("val") = val,
+                                       Rcpp::Named("trace") = trace);
+  return Rcpp::List::create(Rcpp::Named("val") = val, Rcpp::Named("trace") = trace,
+                            Rcpp::Named("W") = W, Rcpp::Named("SW") = SW,
+                            Rcpp::Named("mean_i") = mean_i,
+                            Rcpp::Named("residual") = resid);
+}')
