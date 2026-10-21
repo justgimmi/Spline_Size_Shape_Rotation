@@ -139,6 +139,16 @@ RB_MCMC <- function(total_iter, burnin, thinning,
         # print(hyper_env$S_mat %*% hyper_env$D_p %*% solve(t(hyper_env$D_p)%*%hyper_env$S_mat %*% hyper_env$D_p) %*% 
         #                  t(hyper_env$D_p) %*% t(hyper_env$S_mat ))
         print(init_env$sigma_2/hyper_env$V)
+        print(init_env$sigma_2*hyper_env$V/(norm(init_env$mean, type = "F")^2))
+        s <- sqrt(sum(scale(init_env$mean, scale = FALSE)^2))
+        
+        ev <- eigen(init_env$Sigma, symmetric = TRUE)$values
+        s  <- sqrt(sum(scale(init_env$mean, scale = FALSE)^2))
+        print(c(d = sqrt(init_env$sigma_2 * hyper_env$V) / s,
+          noise_max = sqrt(ev[1]) / s, noise_min = sqrt(ev[2]) / s))
+        psi_bar <- apply(init_env$psi, c(1, 2), mean)
+        print(sum(psi_bar^2) / mean(apply(init_env$psi, 3, function(p) sum(p^2))))
+
       }
     
       
@@ -168,7 +178,7 @@ RB_MCMC <- function(total_iter, burnin, thinning,
     output$W[[i]] <- init_env$W
     output$sigma_2[i, ] <- init_env$sigma_2
     output$sigma_2_epurated[i,] <- init_env$sigma_2/hyper_env$V
-    app <- compute_proc_dist(init_env, X_pred)
+    app <- compute_proc_dist(init_env, X, X_pred)
     output$dis[i, ] <- app$dis
     output$pred_i[[i]] <- app$X_pred
   }
@@ -176,6 +186,7 @@ RB_MCMC <- function(total_iter, burnin, thinning,
   out <- list()
   out$output <- output
   out$init <- init_env
+  out$hyper <- hyper_env
   return(out)
   
 }
@@ -197,7 +208,7 @@ X <- mat_demented
 X <- final_array/100
 X <- final_array
 
-prova <- init_mu_star (X,n_basis = 14, degree = 3, start = "gpa", ridge   = 1e-3, plot = TRUE,
+prova <- init_mu_star (X,n_basis = 12, degree = 3, start = "gpa", ridge   = 1e-2, plot = TRUE,
                        Sigma_eta = diag(10, 2))
 init <- prova$init
 hyper <- prova$hyper
@@ -265,424 +276,19 @@ profvis(expr = {
                      init = init, hyper = hyper)
 })
   toc()
-hyper$b_phi
-init$mean
-mean(MCMC_samp$output$lambdas)
-MCMC_samp$output$sigma_2
-par(mfrow = c(1,1))
-plot(MCMC_samp$output$sigma_2_epurated, type = "l")
-ESS(MCMC_samp$output$sigma_2)
-plot(MCMC_samp$output$sigma_2, type = "l")
-plot(MCMC_samp$output$z)
-dim(MCMC_samp$output$dis)
-gcinfo(FALSE)
-total_iter = 100000
-burnin = 30000
-thinning  = 20
-X <- sam$X
-thetas <- MCMC_samp$output$theta[1,]
-k_l <- length(thetas)
-mat <- matrix(NA, nrow = k_l, ncol = k_l)
-d <- covariance_mat(mat, thetas)
-sam$theta
-
-sum(d >= 1)/2
-18*18/2
-
-MCMC_samp$output$t
-posterior_pred <- sample_posterior_predictive(MCMC_samp$output, 1)
-
-dim(posterior_pred)
-
-
-
-
-
-save(MCMC_samp,X, file = "Fish_31_August.RData")
-load("Torino.RData")
-
-par(mfrow = c(1, 1))
-plot((MCMC_samp$output$lambdas[,5] - MCMC_samp$output$lambdas[,1])%%(2*pi), type ="l")
-library(LaplacesDemon)
-ESS(MCMC_samp$output$lambdas[,3] - MCMC_samp$output$lambdas[,1])
-ESS((MCMC_samp$output$theta[,1] - MCMC_samp$output$lambdas[,10]) %%(2*pi))
-ESS((MCMC_samp$output$theta[,1] - MCMC_samp$output$theta[,12]) %%(2*pi))
-plot((MCMC_samp$output$theta[,1] - MCMC_samp$output$theta[,3]) %%(2*pi), type ="l")
-plot(MCMC_samp$output$phi, type = "l")
-ESS(MCMC_samp$output$phi)
-plot(density(MCMC_samp$output$sigma_2))
-ESS(MCMC_samp$output$sigma_2)
-ESS(MCMC_samp$output$theta[,5] - MCMC_samp$output$theta[,2])
-sam$theta[3] - sam$theta[1]
-ESS(MCMC_samp$output$alphas[,2]/MCMC_samp$output$alphas[,1])
-sam$lambda[2] - sam$lambda[1]
-sam$alphas[2]/sam$alphas[1]
-
-plot(MCMC_samp$output$betas[,13] - exp(MCMC_samp$output$alphas[,1]))
-plot(MCMC_samp$output$gammas[,10], type = "l")
-plot(MCMC_samp$output$theta[,3] - MCMC_samp$output$theta[,2], type = "l")
-ESS(MCMC_samp$output$theta[,3] - MCMC_samp$output$theta[,2])
-gg_mcmc_diagnostics(MCMC_samp$output$tau[,1], param_name = "tau", real_values = NA)
-gg_mcmc_diagnostics(MCMC_samp$output$tau[,2], param_name = "tau", real_values = NA)
-gg_mcmc_diagnostics(MCMC_samp$output$theta, param_name = "theta", real_values = NA, TRUE)
-gg_mcmc_diagnostics(MCMC_samp$output$lambda, param_name = "lambda", real_values = NA, TRUE)
-Sigma_samp <- cbind(MCMC_samp$output$Sigma[,1,1], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,2,2])
-gg_mcmc_diagnostics(Sigma_samp, param_name = "Sigma", real_values = c(NA), TRUE)
-gg_mcmc_diagnostics(MCMC_samp$output$phi, param_name = "phi", real_values = c(NA), TRUE)
-gg_mcmc_diagnostics(MCMC_samp$output$alphas, param_name = "alpha", real_values = NA, TRUE)
-gg_mcmc_diagnostics(MCMC_samp$output$betas, param_name = "betas", real_values = NA, TRUE)
-gg_mcmc_diagnostics(MCMC_samp$output$gammas, param_name = "betas", real_values = NA, TRUE)
-gg_mcmc_diagnostics(MCMC_samp$output$eta[,,1], param_name = "etas", real_values = NA, TRUE)
-par(mfrow = c(1,1))
-acf(MCMC_samp$output$theta[seq(1, 4000, 50),1])
-
-# for (i in 1:n) {
-#   
-#   rot <- sam$mu
-#   mu_i <- sam$mu_i[,,i]
-#   X_i <- sam$X[,,i]
-#   X_new_i <- init_env$mean_i[,,i]
-#   X_mean <- init_env$mean
-# 
-#   plot(rot, asp = 1, pch = 21, bg = "darkgreen", main = "Latent mu")
-#   lines(c(rot[,1], rot[1,1]), c(rot[,2], rot[1,2]), col = "forestgreen", lwd = 2)
-#   
-#   plot(X_mean, asp = 1, pch = 21, bg = "darkblue", main = "Estimated Mean")
-#   lines(c(X_mean[,1], X_mean[1,1]), c(X_mean[,2], X_mean[1,2]), col = "blue", lwd = 2)
-#   
-#   plot(mu_i, asp = 1, pch = 21, bg = "darkred", main = "mu for the i-th unit")
-#   lines(c(mu_i[,1], mu_i[1,1]), c(mu_i[,2], mu_i[1,2]), col = "red", lwd = 2)
-#   
-#   plot(X_new_i, asp = 1, pch = 21, bg = "black", main = "estimated Conf for unit i")
-#   lines(c(X_new_i[,1], X_new_i[1,1]), c(X_new_i[,2], X_new_i[1,2]), col = "brown", lwd = 2)
-#   
-#   
-# }
-
-apply(MCMC_samp$output$betas[,], MARGIN = 2, FUN = mean)
-sam$betas
-thetas <- output$theta[,1]
-betas <- output$betas[,5]
-for (i in 1:init_env$k_l) {
-  for (j in 1:13) {
-    thetas <- output$theta[,i]
-    betas <- output$betas[,j]
-    print(cor(thetas[!is.na(thetas)], betas[!is.na(betas)]))
-  }
-  
-}
-
-pdf("warp_predictions.pdf", width = 20, height = 5.5)   # 4 panels of ~5 x 5.5 in
-par(mfrow = c(1, 4),
-    mar = c(3, 3, 3, 1),      # tighter margins -> more room for the plot region
-    mgp = c(2, 0.7, 0))  
-n_iter <- dim(MCMC_samp$output$mean)[1]
-#i = 1
-k_l <- dim(MCMC_samp$output$mean)[2]
-n = dim(X)[3]
-#i = 1
-# dev.off()
-for (i in 1:n) {
-  
-  X_i <- X[,,i]
-  
-  X_mean <- MCMC_samp$init$mean
-
-  mean_samp <- MCMC_samp$output$mean  # [iter, k, 2]
-
-  mean_low <- apply(mean_samp, c(2,3), quantile, probs = 0.025)
-  mean_high <- apply(mean_samp, c(2,3), quantile, probs = 0.975)
-  mean_samp_mean <- apply(mean_samp, c(2,3), mean)
-  # 
-  plot(mean_samp_mean, asp = 1, pch = 21, bg = "darkblue",
-       main = "Estimated Mean + CI", xlim = range(mean_samp_mean[,1]) + c(-0.1, 0.1),
-       ylim = range(mean_samp_mean[,2]) + c(-0.1, 0.1))
-
-  lines(c(mean_samp_mean[,1], mean_samp_mean[1,1]),
-        c(mean_samp_mean[,2], mean_samp_mean[1,2]),
-        col = "blue", lwd = 2)
-
-  for (k in 1:nrow(X_mean)) {
-
-    polygon(
-      x = c(mean_low[k,1], mean_high[k,1],
-            mean_high[k,1], mean_low[k,1]),
-      y = c(mean_low[k,2], mean_low[k,2],
-            mean_high[k,2], mean_high[k,2]),
-      border = NA,
-      col = "red"
-    )
-  }
-  # 
-  plot(X_i, asp = 1, pch = 21, bg = "darkred",
-       main = "i-th unit", xlim = range(X_i[,1]) + c(-0.1, 0.1),
-       ylim = range(X_i[,2]) + c(-0.1, 0.1) )
-
-  lines(c(X_i[,1], X_i[1,1]),
-        c(X_i[,2], X_i[1,2]),
-        col = "red", lwd = 2)
-
-  samp_i <- extract_mean_i(MCMC_samp$output, i)
-  mean_samp_i <- apply(samp_i, c(1,2), mean)
-  low_i <- apply(samp_i, c(1,2), quantile, 0.025)
-  high_i <- apply(samp_i, c(1,2), quantile, 0.975)
-  plot(mean_samp_i, asp = 1, pch = 21, bg = "black",
-        main = "Estimated config + CI",  xlim = range(mean_samp_i[,1]) + c(-0.1, 0.1),
-        ylim = range(mean_samp_i[,2]) + c(-0.1, 0.1))
-  # 
-  lines(c(mean_samp_i[,1], mean_samp_i[1,1]),
-         c(mean_samp_i[,2], mean_samp_i[1,2]),
-         col = "brown", lwd = 2)
-   for (k in 1:k_l) {
-   
-     polygon(
-       x = c(low_i[k,1], high_i[k,1],
-             high_i[k,1], low_i[k,1]),
-       y = c(low_i[k,2], low_i[k,2],
-             high_i[k,2], high_i[k,2]),
-       col = rgb(0,0,1,0.40),
-       border = NA
-     )
-   
-   }
-  posterior_pred <- sample_posterior_predictive(MCMC_samp$output, i)
-  post_samp_i <- apply(posterior_pred, c(1,2), mean)
-  low_post_i <- apply(posterior_pred, c(1,2), quantile, 0.025)
-  high_post_i <- apply(posterior_pred, c(1,2), quantile, 0.975)
-  plot(post_samp_i, asp = 1, pch = 21, bg = "black",
-        main = "Posterior Predictive", xlim = range(post_samp_i[,1]) + c(-0.1, 0.1), ylim = range(post_samp_i[,2]) + c(-0.1, 0.1))
-  lines(c(post_samp_i[,1], post_samp_i[1,1]),
-         c(post_samp_i[,2], post_samp_i[1,2]),
-         col = "brown", lwd = 2)
-  for (k in 1:k_l) {
-
-    polygon(
-      x = c(low_post_i[k,1], high_post_i[k,1],
-            high_post_i[k,1], low_post_i[k,1]),
-      y = c(low_post_i[k,2], low_post_i[k,2],
-            high_post_i[k,2], high_post_i[k,2]),
-      col = rgb(0,0,1,0.40),
-      border = NA
-    )
-  }
-  points(X_i, pch = 16, col = "red")
-}
-
-dev.off()
-gg_mcmc_diagnostics(MCMC_samp$output$phi[,1], param_name = "phi", real_values = NA)
-gg_mcmc_diagnostics(MCMC_samp$output$phi[,1], param_name = "phi", real_values = NA)
-gg_mcmc_diagnostics(MCMC_samp$output$tau[,2], param_name = "tau", real_values = NA)
-gg_mcmc_diagnostics(MCMC_samp$output$theta, param_name = "theta", real_values = NA, TRUE)
-gg_mcmc_diagnostics(MCMC_samp$output$lambda, param_name = "lambda", real_values = NA, TRUE)
-Sigma_samp <- cbind(MCMC_samp$output$Sigma[,1,1], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,1,2], MCMC_samp$output$Sigma[,2,2])
-gg_mcmc_diagnostics(Sigma_samp, param_name = "Sigma", real_values = c(NA), TRUE)
-gg_mcmc_diagnostics(MCMC_samp$output$alphas, param_name = "alpha", real_values = NA, TRUE)
-gg_mcmc_diagnostics(MCMC_samp$output$betas, param_name = "betas", real_values = NA, TRUE)
-
-
-
-
-MCMC_samp$output$mean[1, ,]
-
-X <- X
-
 output <- MCMC_samp$output
 
-X0 <- X[, , 2]
-sam$X
-pair <- c(2, 14)
-distt <- 0
 
-for (i in 1:nrow(X0)) {
-  for (j in 1:nrow(X0)) {
-    
-    dis <- sum((X0[i,] - X0[j,])^2)
-    
-    if (dis > distt) {
-      pair <- c(i, j)
-      distt <- dis
-    }
-  }
-}
-pair
+visualize_results(output, X, "diocan", sam)
 load("risultati_new.RData")
 output <- MCMC_samp$output
 #pair <- c(1, 12)
-align_prof_method <- function(output, pair, third_landmark = NULL) {
-  
-  n_iter <- dim(output$mean)[1]
-  k <- dim(output$mean)[2]
-  n <- dim(output$lambdas)[2]
-  mean_aligned <- array(0, dim = c(n_iter, k, 2))
-  eta_aligned <- array(0, dim = dim(output$eta))
-  
-  alphas_aligned  <- matrix(0, n_iter, ncol(output$alphas))
-  betas_aligned   <- matrix(0, n_iter, ncol(output$betas))
-  lambdas_aligned <- matrix(0, n_iter, ncol(output$lambdas))
-  theta_aligned   <- matrix(0, n_iter, ncol(output$theta))
-  
-  Sigma_aligned <- array(0, dim(output$Sigma))
-  for (i in 1:n_iter) {
-    
-    M_raw <- output$mean[i,,]
-
-    # Remove Translatiomn
-    
-    shift <- M_raw[pair[1],]
-    M <- sweep(M_raw, 2, shift, "-")
-    mat <- matrix(shift, byrow = T, nrow = k, ncol = 2)
-    for (j in 1:n) {
-      R <- matrix(c(cos(output$lambdas[i, j]), -sin(output$lambdas[i, j]),
-                    sin(output$lambdas[i, j]),  cos(output$lambdas[i, j])),
-                  2,2,byrow=TRUE)
-      eta_aligned[i,j,] <- output$eta[i,j,] + output$alphas[i, j] * (mat%*%R)[1,]
-      
-    }
-    theta_aligned[i,] <- atan2(M[,2], M[,1]) %% (2*pi)
-    r_new <- sqrt(M[,1]^2 + M[,2]^2)
-    idx_zero <- which.min(r_new)
-    theta_fit <- theta_aligned[i, -idx_zero]
-    r_fit <- r_new[-idx_zero]
-    #idx_order <- order(theta_fit)
-    #theta_fit <- theta_fit[idx_order]
-    #r_fit <- r_fit[idx_order]
-    log_r_emp <- log(r_fit)
-    B_init <- Basis_Construction(theta_fit, 10, 3)
-    K <- hyper$K
-    tau2 <- output$tau[i] 
-    
-    betas_aligned[i,] <- solve(t(B_init) %*% B_init + (1/sqrt(tau2)) * K) %*% t(B_init) %*% log_r_emp
-    
-    v <- M[pair[2],]
-
-    phi <- atan2(v[2], v[1])%%(2*pi)
-
-    R <- matrix(c(cos(phi), -sin(phi),
-                  sin(phi),  cos(phi)),
-                2,2,byrow=TRUE)
-
- 
-    M <- M %*% R
-
-    lambdas_aligned[i,] <- (output$lambdas[i,] - phi)%%(2*pi)
-    theta_aligned[i,]   <- (theta_aligned[i,] + phi) %%(2*pi)
-  
-
-    scale <- sqrt(sum(M^2))
-    M <- M / scale
-
-    alphas_aligned[i,] <- output$alphas[i,] * scale
-    betas_aligned[i,]  <- betas_aligned[i,] - log(scale)
 
 
-    mean_aligned[i,,] <- M
-    
-    Sigma_i <- (t(R) %*% output$Sigma[i,,] %*% R) / (scale^2)
-    Sigma_aligned[i,,] <- Sigma_i
-  }
-  
-  output$mean <- mean_aligned
-  output$eta <- eta_aligned
-  output$alphas <- alphas_aligned
-  output$betas <- betas_aligned
-  output$lambdas <- lambdas_aligned
-  output$theta <- theta_aligned
-  output$Sigma <- Sigma_aligned
-  
-  output
-}
-output = MCMC_samp$output
-output_identificato <- align_prof_method(output, pair = pair)
-gg_mcmc_diagnostics(output_identificato$theta[,7] - output_identificato$theta[,1], param_name = "alpha Ratio", real_values = NA, TRUE)
-dim(output_identificato$mean[,,1])
-output$mean[,,1]
-ESS(output_identificato$mean[,,2])
-prova <- array(0, dim = c(dim(output$alphas)[1],2,2))
-
-for (i in 1:dim(output$alphas)[1]) {
-  phi <- output_identificato$lambdas[i,2]
-  R <- matrix(c(cos(phi), -sin(phi),
-                sin(phi),  cos(phi)),
-              2,2,byrow=TRUE)
-  prova[i,,] <- (output_identificato$alphas[i,2]^2)*(t(R) %*%output_identificato$Sigma[i,,] %*% R)
-  
-}
-prova[,1,1]
-
-solve(t(R))
-pdf("Risulati_new.pdf")
-k = 19
-k_l = 19
-prova <- array(0, dim  = c(120, k, 2))
-# for (i in 1:100) {
-#   eta_matrix <- matrix(sam$eta[i, ], nrow = k, ncol = 2, byrow = TRUE)
-#   mu_i <- sam$X[,,i] - eta_matrix
-#   
-#   mu_i <- mu_i / sam$alphas[i]
-#   
-#   R_inv <- Rmat(sam$lambda[i])
-#   mu_i <- mu_i %*% R_inv
-#   
-#   # 4. PLOT
-#   prova[i,,] <- mu_i
-#   # plot(mu_i, asp = 1, pch = 21, bg = "darkred", 
-#   #      main = paste("Mu ricostruito per l'unità", i),
-#   #      xlim = c(-2, 2), ylim = c(-1.5, 1.5)) 
-#   # lines(c(mu_i[,1], mu_i[1,1]), c(mu_i[,2], mu_i[1,2]), col = "red", lwd = 2)
-# }
-par(mfrow = c(1, 1))
-mean_behav <- apply(prova, MARGIN = c(2, 3), FUN = mean)
-plot(mean_behav, xlim = c(-1, 1.5), pch = 16, ylim = c(-1, 1), asp = 1)
-#plot()
-for (i in 1:120) {
-  points(prova[i,,], asp = 1, pch = 16, col = "red")
-  
-}
-points(apply(prova, MARGIN = c(2, 3), FUN = mean), asp = 1, pch = 16,
-       xlim = c(-0.5, 0.5), ylim = c(-1, 1))
-output <- MCMC_samp$output
-gg_mcmc_diagnostics(MCMC_samp$output$tau, param_name = "tau", real_values = NA)
-#gg_mcmc_diagnostics(output$theta - output$theta[,1], param_name = "theta", real_values = NA, TRUE)
-gg_mcmc_diagnostics(output$lambda[,]%%(2*pi) - output$lambda[,1]%%(2*pi)  , param_name = "lambda diff", real_values = NA, TRUE)
-# Sigma_samp <- cbind(prova[,1,1], prova[,1,2],prova[,1,2], prova[,2,2])
-# Sigma_samp <- cbind(output_identificato$Sigma[,1,1],
-#                     output_identificato$Sigma[,1,2],output_identificato$Sigma[,1,2],
-#                     output_identificato$Sigma[,2,2])
-# gg_mcmc_diagnostics(Sigma_samp, param_name = "Sigma", real_values = c(NA), TRUE)
-gg_mcmc_diagnostics(output$alphas/output$alphas[,1], param_name = "alpha Ratio", real_values = NA, TRUE)
-#gg_mcmc_diagnostics(output_identificato$betas, param_name = "betas", real_values =NA, TRUE)
-n_iter <- dim(MCMC_samp$output$alphas)[1]
-par(mfrow = c(1, 3))
-par(mfrow = c(1, 1))
-n <- 100
-
-pdf("warp.pdf")
-output <- MCMC_samp$output
-gg_mcmc_diagnostics(as.vector(MCMC_samp$output$tau[,1]), param_name = "tau1", real_values = NA)
-gg_mcmc_diagnostics(as.vector(MCMC_samp$output$tau[,2]), param_name = "tau2", real_values = NA)
-gg_mcmc_diagnostics(as.vector(MCMC_samp$output$sigma_2), param_name = "sigma2", real_values = NA)
-
-nsamp <- dim(output$lambdas)[1]
-mean_orig <- array(NA, c(k, 2, nsamp))
-# common_mean_orig <- 
-mean_noloc <- array(NA, c(k, 2, nsamp))
-mean_noloc_i <- array(NA, c(k, 2, nsamp))
-mean_norot <- array(NA, c(k, 2, nsamp))
-mean_norot_i <- array(NA, c(k, 2, nsamp))
-mean_nosize <- array(NA, c(k, 2, nsamp))
-mean_nosize_i <- array(NA, c(k, 2, nsamp))
-sigma_orig <- array(NA, c(2, 2, nsamp))
-sigma_noloc <- array(NA, c(2, 2, nsamp))
-sigma_norot <- array(NA, c(2, 2, nsamp))
-sigma_nosize <- array(NA, c(2, 2, nsamp))
-warp_mean <- array(NA, c(k, 2, n))
-# pair <- c(1, 10)
-# iobs <- 1
-# isamp <- 1
 for (iobs in 1:n) {
   
   # 1. Feedback reale sulla console R
-  cat(sprintf("\rElaborazione Unità: %3d / 120 ... ", iobs))
+  cat(sprintf("\rElaborazione Unità: %3d", iobs))
   flush.console()
   
   krot <- pair[2]
@@ -711,7 +317,7 @@ for (iobs in 1:n) {
     # Stabilizzo elevando la media campionaria
     #mean_norot[, , isamp] <- mean_norot[, , isamp] - matrix(colMeans(mean_norot[, , isamp]), nrow = k, ncol = 2, byrow = T)
     #mean_norot_i[, , isamp] <- mean_norot_i[, , isamp] - matrix(colMeans(mean_norot_i[, , isamp]), nrow = k, ncol = 2, byrow = T)
-    normx <- norm(mean_norot[, , isamp], )
+    normx <- norm(mean_norot[, , isamp])
     
     mean_nosize[, , isamp] <- mean_norot[, , isamp] / normx
     warping <- warping/normx
@@ -798,6 +404,8 @@ for (iobs in 1:n) {
       abline(h = mean(sigma_nosize[i, j, ]), col = "red", lty = 2, lwd = 1.5)
     }
   }
+  
+  dev.off()
 }
 
 dev.off()

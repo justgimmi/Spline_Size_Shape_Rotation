@@ -156,15 +156,7 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   mu_mean <- cbind(mu_mean_x, mu_mean_y) # mean configuration 
   k_free <- K_l - 3
   S_mat <- S_mat_constructor(mu_mean)
-  # init <- list()
-  # hyper <- list()
-  # init$mean <- mu_mean
-  # init$betas <- beta_values
-  # init$r <- r
-  # init$thetas <- thetas
-  # hyper$n_basis <- n_int_knots
-  # hyper$degree <- degree
-  
+
   
   D_p <- D_p_constructor(mu_mean, K_l)
   psi <- array(0, dim = c(k_free, 2, n))
@@ -205,7 +197,7 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   }
   
   if (length(eta) == 1) {
-    eta <- matrix(rnorm(n = n*2, sd = 4.5), ncol = 2) # sample the translation effect 
+    eta <- matrix(rnorm(n = n*2, sd = 8), ncol = 2) # sample the translation effect 
     
   }
   
@@ -257,6 +249,7 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   final_param$S_mat <- S_mat
   final_param$W <- W
   final_param$D_p <- D_p
+  final_param$sigma_2 <- sigma_2
   
   return(final_param)
 
@@ -391,7 +384,7 @@ init_param <- function(tau, lambdas, thetas, betas, Sigma, eta, alphas, gammas, 
   param$Sigma_inv <- solve(param$Sigma) # deterministic inverse 
   param$Q_R <- array(NA, dim = c(2, 2, n)) # deterministic  R^T \Sigma^-1 R
   param$residual <-  array(NA, dim = c(2, 2, n)) #deterministic (X_i - \mu_i)^T(X_i - \mu_i) 
-  param$sigma_2 <- 1 # temperature of the warping 
+  param$sigma_2 <- 1e-4 # temperature of the warping 
   param$psi <- array(NA, dim = c(length(thetas) - 3, 2, n)) # k_free x 2 x n array of free warping
   param$psi_flatten <- matrix(param$psi, nrow = length(thetas) - 3) # flatten version of psi
   param$W <- array(NA, dim = c(length(thetas), 2, n)) # k x 2 x n array of constrained warping
@@ -970,7 +963,296 @@ gg_mcmc_diagnostics <- function(data, param_name = "NA", real_values = "NA" ,mat
     return(plot_list)
   }
 }
+show <- function(p) {
+  if (inherits(p, "ggplot")) print(p) else for (q in p) print(q)
+}
 
+
+
+visualize_results <- function(output, X, file_name, sam = NULL){
+  pdf(paste(file_name, sep = "_predictions", ".pdf"), width = 20, height = 5.5) # open pdf
+  par(mfrow = c(1, 4),
+      mar = c(3, 3, 3, 1),     
+      mgp = c(2, 0.7, 0)) # define the margins for the first window
+  
+  n_iter <- dim(output$mean)[1] # number of iterations
+  k_l <- dim(output$mean)[2] # number of landmarks
+  n <- dim(X)[3] # sample size
+  mean_samp <- output$mean # common star shaped mean  [iter, k, 2]
+  mean_low <- apply(mean_samp, c(2,3), quantile, probs = 0.025) # compute quantiles
+  mean_high <- apply(mean_samp, c(2,3), quantile, probs = 0.975)
+  mean_samp_mean <- apply(mean_samp, c(2,3), mean) # compute average value
+  for (i in 1:n) {
+    X_i <- X[,,i] # unit i # 
+    
+    plot(mean_samp_mean, asp = 1, pch = 21, bg = "darkblue",
+         main = "Estimated Mean + CI", xlim = range(mean_samp_mean[,1]) + c(-0.1, 0.1),
+         ylim = range(mean_samp_mean[,2]) + c(-0.1, 0.1))
+    
+    lines(c(mean_samp_mean[,1], mean_samp_mean[1,1]),
+          c(mean_samp_mean[,2], mean_samp_mean[1,2]),
+          col = "blue", lwd = 2)
+    
+    for (k in 1:k_l) {
+      
+      polygon(
+        x = c(mean_low[k,1], mean_high[k,1],
+              mean_high[k,1], mean_low[k,1]),
+        y = c(mean_low[k,2], mean_low[k,2],
+              mean_high[k,2], mean_high[k,2]),
+        border = NA,
+        col = "red"
+      )
+    }
+    # 
+    plot(X_i, asp = 1, pch = 21, bg = "darkred",
+         main = "i-th unit", xlim = range(X_i[,1]) + c(-0.1, 0.1),
+         ylim = range(X_i[,2]) + c(-0.1, 0.1) )
+    
+    lines(c(X_i[,1], X_i[1,1]),
+          c(X_i[,2], X_i[1,2]),
+          col = "red", lwd = 2)
+    
+    app <- extract_mean_i(output, i)
+    samp_i <- app$mean_i # mean of unit i
+    mean_samp_i <- apply(samp_i, c(1,2), mean)
+    low_i <- apply(samp_i, c(1,2), quantile, 0.025)
+    high_i <- apply(samp_i, c(1,2), quantile, 0.975)
+    plot(mean_samp_i, asp = 1, pch = 21, bg = "black",
+         main = "Estimated config + CI",  xlim = range(mean_samp_i[,1]) + c(-0.1, 0.1),
+         ylim = range(mean_samp_i[,2]) + c(-0.1, 0.1))
+    # 
+    lines(c(mean_samp_i[,1], mean_samp_i[1,1]),
+          c(mean_samp_i[,2], mean_samp_i[1,2]),
+          col = "brown", lwd = 2)
+    for (k in 1:k_l) {
+      
+      polygon(
+        x = c(low_i[k,1], high_i[k,1],
+              high_i[k,1], low_i[k,1]),
+        y = c(low_i[k,2], low_i[k,2],
+              high_i[k,2], high_i[k,2]),
+        col = rgb(0,0,1,0.40),
+        border = NA
+      )
+      
+    }
+    posterior_pred <- app$pred_i # posterior predictive distribution
+    post_samp_i <- apply(posterior_pred, c(1,2), mean)
+    low_post_i <- apply(posterior_pred, c(1,2), quantile, 0.025)
+    high_post_i <- apply(posterior_pred, c(1,2), quantile, 0.975)
+    plot(post_samp_i, asp = 1, pch = 21, bg = "black",
+         main = "Posterior Predictive", xlim = range(post_samp_i[,1]) + c(-0.1, 0.1), ylim = range(post_samp_i[,2]) + c(-0.1, 0.1))
+    lines(c(post_samp_i[,1], post_samp_i[1,1]),
+          c(post_samp_i[,2], post_samp_i[1,2]),
+          col = "brown", lwd = 2)
+    for (k in 1:k_l) {
+      
+      polygon(
+        x = c(low_post_i[k,1], high_post_i[k,1],
+              high_post_i[k,1], low_post_i[k,1]),
+        y = c(low_post_i[k,2], low_post_i[k,2],
+              high_post_i[k,2], high_post_i[k,2]),
+        col = rgb(0,0,1,0.40),
+        border = NA
+      )
+    }
+    points(X_i, pch = 16, col = "red")
+    
+  }
+  dev.off()
+  pdf(paste(file_name, sep = "_diagnostics", ".pdf"), width = 20, height = 5.5) # open pdf
+  if (is.null(sam)) {
+    show(gg_mcmc_diagnostics(output$tau[,1], param_name = "tau_1", real_values = NA))
+    show(gg_mcmc_diagnostics(output$tau[,2], param_name = "tau_2", real_values = NA))
+    show(gg_mcmc_diagnostics(output$alphas/output$alphas[,1], param_name = "alpha ratios others vs 1", real_values = NA, TRUE))
+    show(gg_mcmc_diagnostics((output$lambdas - output$lambdas[,1])%%(2*pi), param_name = "lambda diff others vs 1", real_values = NA, TRUE))
+    show(gg_mcmc_diagnostics(output$sigma_2_epurated, param_name = "sigma_2 epur", real_values = NA))
+  }
+  
+  else{
+    show(gg_mcmc_diagnostics(output$tau[,1], param_name = "tau_1", real_values = sam$tau[1]))
+    show(gg_mcmc_diagnostics(output$tau[,2], param_name = "tau_2", real_values = sam$tau[2]))
+    show(gg_mcmc_diagnostics(output$alphas/output$alphas[,1], param_name = "alpha ratios others vs 1", real_values = sam$alphas/sam$alphas[1], TRUE))
+    show(gg_mcmc_diagnostics((output$lambdas - output$lambdas[,1])%%(2*pi), param_name = "lambda diff others vs 1", real_values = (sam$lambda - sam$lambda[1]) %%(2*pi), TRUE))
+    V <- median(diag(sam$S_mat %*% sam$D_p %*% solve(t(sam$D_p)%*%sam$S_mat %*% sam$D_p) %*% t(sam$D_p) %*% sam$S_mat))
+    show(gg_mcmc_diagnostics(output$sigma_2_epurated[,], param_name = "sigma_2_epur", real_values = sam$sigma_2/V))
+    # show(gg_mcmc_diagnostics(output$eta[,,1] - output$eta[,1,1] , param_name = "eta diff others vs 1", real_values = sam$eta[,1] - sam$eta[1,1], TRUE))
+    # show(gg_mcmc_diagnostics(output$eta[,,2] - output$eta[,1,2] , param_name = "eta diff others vs 1", real_values = sam$eta[,2] - sam$eta[1,2], TRUE))
+  }
+  dev.off()
+  
+  
+  X0 <- X[, , 2]
+  pair <- c(2, 14)
+  distt <- 0
+  for (i in 1:nrow(X0)) {
+    for (j in 1:nrow(X0)) {
+      
+      dis <- sum((X0[i,] - X0[j,])^2)
+      
+      if (dis > distt) {
+        pair <- c(i, j)
+        distt <- dis
+      }
+    }
+  }
+  # pair # those are the two landmarks w.r.t we are going to identify stuff
+  nsamp <- n_iter
+  k <- k_l
+  mean_orig <- array(NA, c(k, 2, nsamp))
+  mean_noloc <- array(NA, c(k, 2, nsamp))
+  mean_noloc_i <- array(NA, c(k, 2, nsamp))
+  mean_norot <- array(NA, c(k, 2, nsamp))
+  mean_norot_i <- array(NA, c(k, 2, nsamp))
+  mean_nosize <- array(NA, c(k, 2, nsamp))
+  mean_nosize_i <- array(NA, c(k, 2, nsamp))
+  sigma_orig <- array(NA, c(2, 2, nsamp))
+  sigma_noloc <- array(NA, c(2, 2, nsamp))
+  sigma_norot <- array(NA, c(2, 2, nsamp))
+  sigma_nosize <- array(NA, c(2, 2, nsamp))
+  warp_mean <- array(NA, c(k, 2, n))
+  pdf(paste(file_name, sep = "_mean_ident", ".pdf"), width = 20, height = 5.5) # open pdf
+  
+  for (iobs in 1:n) {
+    
+    # 1. Feedback reale sulla console R
+    cat(sprintf("\rElaborazione Unità: %3d", iobs))
+    flush.console()
+    
+    krot <- pair[2]
+    for (isamp in 1:nsamp){
+      ## Creo oggetti originali
+      rrr <- Rmat(output$lambdas[isamp, iobs])
+      sigma_orig[, , isamp] <- t(rrr) %*% output$Sigma[isamp, , ] %*% rrr * output$alphas[isamp, iobs]^2
+      mean_orig[, , isamp] <- output$mean[isamp, ,] # mean
+      S <- S_mat_constructor(mean_orig[, , isamp])
+      warping <- S%*%output$W[[isamp]][,,iobs]
+      # Metto una coordinata a zero (Rimuovo traslazione)
+      mean_noloc[, , isamp] <- mean_orig[, , isamp] - matrix(mean_orig[pair[1], , isamp], nrow = k, ncol = 2, byrow = T)
+      warping <- warping
+      mean_noloc_i[, , isamp] <- mean_noloc[, , isamp] + warping
+      sigma_noloc[, , isamp] <- sigma_orig[, , isamp]
+      
+      # Tolgo la rotazione
+      angle <- atan2(mean_noloc[krot, 2, isamp], mean_noloc[krot, 1, isamp])
+      mean_norot[, , isamp] <- mean_noloc[, , isamp] %*% Rmat(angle)
+      warping <- warping %*% Rmat(angle)
+      mean_norot_i[, , isamp] <- mean_norot[, , isamp] +  warping
+      sigma_norot[, , isamp] <- t(Rmat(angle)) %*% sigma_noloc[, , isamp] %*% Rmat(angle)
+      
+      # Stabilizzo elevando la media campionaria
+      #mean_norot[, , isamp] <- mean_norot[, , isamp] - matrix(colMeans(mean_norot[, , isamp]), nrow = k, ncol = 2, byrow = T)
+      #mean_norot_i[, , isamp] <- mean_norot_i[, , isamp] - matrix(colMeans(mean_norot_i[, , isamp]), nrow = k, ncol = 2, byrow = T)
+      # normx <- norm(mean_norot[, , isamp])
+      normx <- norm(sweep(mean_orig[, , isamp], 2, colMeans(mean_orig[, , isamp])), "F")
+      
+      mean_nosize[, , isamp] <- mean_norot[, , isamp] / normx
+      warping <- warping/normx
+      mean_nosize_i[, , isamp] <- mean_nosize[, , isamp] + warping
+      sigma_nosize[, , isamp] <- sigma_norot[, , isamp] / normx^2
+    }
+    
+    # Calcoliamo la forma media a posteriori per disegnare una linea guida pulita
+    mean_shape_posterior <- apply(mean_nosize, c(1, 2), mean)
+    mean_shape_posterior_i <- apply(mean_nosize_i, c(1, 2), mean)
+    warp_mean[, , iobs] <- mean_shape_posterior_i
+    # ====================================================================
+    # PAGINA 1: Il "Cloud" dei Landmark allineati + Forma Media
+    # ====================================================================
+    par(mfrow = c(1, 1), mar = c(5, 5, 4, 2))
+    
+    plot(0, 0, type = "n", 
+         xlim = range(mean_nosize[, 1, ]), 
+         ylim = range(mean_nosize[, 2, ]),
+         asp = 1, # FONDAMENTALE: mantiene le proporzioni geometriche reali
+         xlab = "X", ylab = "Y",
+         main = paste("Landmark Allineati Unità", iobs))
+    
+    # Disegniamo i punti di ogni iterazione (usando una trasparenza per vedere la densità)
+    colors_palette <- rainbow(k)
+    for (iii in 1:k) {
+      points(t(mean_nosize[iii, , ]), col = adjustcolor(colors_palette[iii], alpha.f = 0.4), cex = 1, pch = 20)
+    }
+    
+    # Disegniamo la sagoma della forma media a posteriori che unisce i punti
+    lines(c(mean_shape_posterior[,1], mean_shape_posterior[1,1]), 
+          c(mean_shape_posterior[,2], mean_shape_posterior[1,2]), 
+          col = "black", lwd = 2, lty = 1)
+    
+    
+    # Evidenziamo i landmark medi stimati
+    points(mean_shape_posterior, col = "black", bg = colors_palette, pch = 21, cex = 1.4, lwd = 1.5)
+    # ====================================================================
+    # PAGINE 2+: I Traceplot dei Landmark (X e Y)
+    # ====================================================================
+    par(mfrow = c(3, 2), mar = c(4, 4, 2.5, 1)) # Ripristiniamo la griglia ordinata 3x2
+    
+    for (iii in 1:k) {
+      for (ip in 1:2) {
+        coord_label <- ifelse(ip == 1, "Coord X", "Coord Y")
+        
+        plot(mean_nosize_i[iii, ip, ], type = "l", col = "steelblue",
+             xlab = "Iterazioni MCMC", ylab = coord_label,
+             main = paste("Media", iii, "-", coord_label))
+        print(ESS(mean_nosize_i[iii, ip, ]))
+        
+        # Linea rossa tratteggiata sul valore medio stimato per controllare la convergenza
+        abline(h = mean_shape_posterior_i[iii, ip], col = "red", lty = 2, lwd = 1.5)
+      }
+    }
+    
+    par(mfrow = c(2, 2), mar = c(4, 4, 2.5, 1))
+    
+    sigma_labels <- matrix(c("Var(X)", "Cov(X,Y)", "Cov(Y,X)", "Var(Y)"), 2, 2)
+    for (i in 1:2) {
+      for (j in 1:2) {
+        plot(sigma_nosize[i, j, ], type = "l", col = "darkorange",
+             xlab = "Iterazioni MCMC", ylab = "Valore",
+             main = paste("Sigma -", sigma_labels[i, j]))
+        
+        # Linea di riferimento sul valore medio di Sigma
+        abline(h = mean(sigma_nosize[i, j, ]), col = "red", lty = 2, lwd = 1.5)
+      }
+    }
+  }
+  
+  dev.off()
+  
+  pdf(paste(file_name, sep = "funny", ".pdf"), width = 20, height = 5.5) # open pdf
+  
+  amp  <- 1       
+  cols <- rainbow(k)
+  
+  for (iobs in 1:n) {
+    m0 <- mean_shape_posterior       # mu*
+    m1 <- warp_mean[,,iobs]     # mu* + S W_i
+    rng  <- range(c(mean_nosize[,1,], mean_nosize_i[,1,]))
+    rngy <- range(c(mean_nosize[,2,], mean_nosize_i[,2,]))
+    
+    par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+    
+    # (a) forme medie posteriori e spostamento
+    plot(0, 0, type = "n", xlim = rng, ylim = rngy, asp = 1, xlab = "X", ylab = "Y",
+         main = paste0("Unità ", iobs, ": mu* (tratteggio) vs mu* + S W (rosso)"))
+    lines(rbind(m0, m0[1, ]), lty = 2, lwd = 2)
+    lines(rbind(m1, m1[1, ]), col = "red", lwd = 2)
+    arrows(m0[,1], m0[,2], m0[,1] + amp*(m1[,1]-m0[,1]), m0[,2] + amp*(m1[,2]-m0[,2]),
+           length = 0.06, col = "blue", lwd = 1.5)
+    points(m0, pch = 21, bg = "white", cex = 1.2)
+    points(m1, pch = 19, col = "red", cex = 0.9)
+    text(m0, labels = 1:k, pos = 3, cex = 0.7)
+    X_i <- X[,,iobs]
+    plot(X_i, asp = 1, pch = 21, bg = "darkred",
+         main = "i-th unit", xlim = range(X_i[,1]) + c(-0.1, 0.1),
+         ylim = range(X_i[,2]) + c(-0.1, 0.1) )
+    
+    lines(c(X_i[,1], X_i[1,1]),
+          c(X_i[,2], X_i[1,2]),
+          col = "red", lwd = 2)
+  }
+  dev.off()
+}
 
 plot_status <- function(init_env, hyper_env, X, file, it, i_unit = 1) {
   # tmp <- paste0(file, ".tmp")
