@@ -776,7 +776,7 @@ init_mu_star <- function(X,
                          ridge   = 1e-1,
                          tau0    = c(0.1, 0.1), phi0 = NULL,
                          Sigma_eta = diag(1, 2),
-                         min_gap_frac = 0.25,          ## NEW: min gap = frac * (2*pi/k)
+                         min_gap_frac = 0.05,          ## NEW: min gap = frac * (2*pi/k)
                          plot    = TRUE) {
   start <- match.arg(start)
   if (nu <= 3) stop("nu must be > 3 for E[Sigma] to exist")
@@ -796,8 +796,8 @@ init_mu_star <- function(X,
 
   ## 1b. minimum gap between consecutive angles
   g_min <- min_gap_frac * 2 * pi / k
-  #theta <- spread_angles(theta_gpa, g_min)
-  #moved <- max(abs(theta - theta_gpa))
+  theta <- spread_angles(theta_gpa, g_min)
+  moved <- max(abs(theta - theta_gpa))
   
   ## 2. one single hyper (C_bar does not depend on psi); phi bounds from the spread angles
   a_phi <- 0.01                      # now >= g_min / 3
@@ -1290,6 +1290,111 @@ plot_status <- function(init_env, hyper_env, X, file, it, i_unit = 1) {
   # ok <- TRUE
 }
 
+
+
+####### strange order ###### 
+init_mu_star_ordered <- function(X,
+                                 n_basis = 8, degree = 3,
+                                 nu = 4, a_tau = 2, b_tau = 0.5,
+                                 pen = 1e-3,            # weak smoothness penalty for the fit of log r
+                                 tau0 = c(0.1, 0.1), phi0 = NULL,
+                                 Sigma_eta = diag(1, 2),
+                                 d0 = 0.01,             # initial individual warp sd (fraction of shape size)
+                                 plot = TRUE) {
+  k <- dim(X)[1]; n <- dim(X)[3]
+  Rot <- function(l) matrix(c(cos(l), -sin(l), sin(l), cos(l)), 2, byrow = TRUE)
+  
+  ## 1. keep the label order; make it counter-clockwise (theta must increase)
+  ms <- shapes::procGPA(X, scale = TRUE)$mshape
+  area <- 0.5 * sum(ms[, 1] * ms[c(2:k, 1), 2] - ms[c(2:k, 1), 1] * ms[, 2])
+  if (area < 0) { X <- X[k:1, , ]; ms <- ms[k:1, ] }
+  msc <- scale(ms, scale = FALSE)
+  
+  ## 2. fixed equispaced angles, strictly inside (0, 2*pi)
+  theta <- 2 * pi * (0:(k - 1)) / k + pi / k
+  
+  ## 3. smooth symmetric mu*: ellipse with the aspect ratio of the mean shape, major axis on theta = 0
+  sv <- svd(msc); ar <- sv$d[1] / sv$d[2]
+  a_ax <- sqrt(ar); b_ax <- 1 / sqrt(ar)
+  r_ell <- a_ax * b_ax / sqrt((b_ax * cos(theta))^2 + (a_ax * sin(theta))^2)
+  hyper <- hyperparameters(a_tau, b_tau, n_basis, degree, nu = nu, psi = diag(1, 2), n = n,
+                           a = 0.1, b = 0.1, Sigma_eta = Sigma_eta,
+                           a_phi = 0.01, b_phi = 5, X = X)
+  B     <- Basis_Construction(theta, n_basis, degree)
+  Bf    <- B %*% hyper$C_bar
+  log_r <- log(r_ell); log_r <- log_r - mean(log_r)          # the level is a gauge
+  gamma <- as.vector(solve(crossprod(Bf) + pen * (hyper$K_gamma1 + hyper$K_gamma2),
+                           crossprod(Bf, log_r)))
+  beta  <- as.vector(hyper$C_bar %*% gamma)
+  r     <- as.numeric(exp(B %*% beta))
+  mu    <- cbind(r * cos(theta), r * sin(theta))
+  mu_c  <- scale(mu, scale = FALSE)
+  
+  ## 4. exact common warp psi0: K psi0 = D'(target - mu*), target = GPA mean aligned to mu*
+  tgt <- shapes::procOPA(mu_c, msc, scale = TRUE)$Bhat
+  S   <- S_mat_constructor(mu); D <- D_p_constructor(mu, k)
+  SD  <- S %*% D; K <- crossprod(D, SD)
+  stopifnot(!inherits(try(chol(K), silent = TRUE), "try-error"))
+  psi0 <- solve(K, crossprod(D, tgt - mu))                   # k_free x 2
+  m    <- mu + SD %*% psi0                                   # population mean shape (identified)
+  mc   <- scale(m, scale = FALSE); cm <- attr(mc, "scaled:center")
+  
+  ## 5. similarity of every unit with respect to m (not mu*)
+  alpha <- lambda <- numeric(n); eta <- matrix(NA, n, 2); refl <- logical(n)
+  for (i in 1:n) {
+    Xc <- scale(X[, , i], scale = FALSE)
+    s  <- svd(crossprod(Xc, mc)); Ri <- s$v %*% t(s$u)
+    if (det(Ri) < 0) { refl[i] <- TRUE; s$u[, 2] <- -s$u[, 2]; Ri <- s$v %*% t(s$u) }
+    lambda[i] <- atan2(Ri[2, 1], Ri[1, 1]) %% (2 * pi)
+    alpha[i]  <- sum(Xc * (mc %*% Ri)) / sum(mc^2)
+    eta[i, ]  <- colMeans(X[, , i]) - alpha[i] * as.vector(cm %*% Ri)
+  }
+  if (any(refl)) warning(sum(refl), " mirrored unit(s): ", paste(which(refl), collapse = ", "))
+  
+  ## 6. Sigma start from the residuals around alpha m R + eta, in the mu* frame
+  S_hat <- matrix(0, 2, 2)
+  for (i in 1:n) {
+    Ri <- Rot(lambda[i])
+    E  <- X[, , i] - (alpha[i] * (m %*% Ri) + matrix(eta[i, ], k, 2, byrow = TRUE))
+    S_hat <- S_hat + crossprod((E %*% t(Ri)) / alpha[i])
+  }
+  S_hat <- S_hat / (n * k)
+  hyper$psi <- (nu - 3) * S_hat; hyper$psi_post <- hyper$psi
+  
+  ## 7. warp scale: V and a sigma^2 giving an individual warp sd of d0 (fraction of size)
+  V  <- median(rowSums((SD %*% chol2inv(chol(K))) * SD))
+  s_size <- sqrt(sum(mu_c^2))
+  sigma2_0 <- (d0 * s_size)^2 / V
+  sigma0_2 <- sum(psi0 * (K %*% psi0)) / (2 * ncol(D))       # scale of the common warp
+  
+  hyper$fix_theta <- TRUE
+  hyper$min_gap <- 0.5 * 2 * pi / k
+  hyper$max_gap <- 1.5 * 2 * pi / k
+  hyper$a_phi <- min(dist(mu_c)[dist(mu_c) > 0]) / 3
+  hyper$b_phi <- max(dist(mu_c)) / 3
+  if (is.null(phi0)) phi0 <- (hyper$a_phi + hyper$b_phi) / 2
+  
+  init <- init_param(tau0, lambda, theta, beta, S_hat, eta, alpha, gamma, phi = phi0, n = n)
+  init$sigma_2 <- sigma2_0
+  init$psi <- array(psi0, c(ncol(D), 2, n))                  # start: every unit at the common warp
+  init$psi0 <- psi0
+  
+  rms <- sapply(1:n, function(i) sqrt(mean((X[, , i] -
+                                              (alpha[i] * (m %*% Rot(lambda[i])) + matrix(eta[i, ], k, 2, byrow = TRUE)))^2)))
+  
+  if (plot) {
+    al <- lapply(1:n, function(i) ((X[, , i] - matrix(eta[i, ], k, 2, byrow = TRUE)) %*% t(Rot(lambda[i]))) / alpha[i])
+    rng <- range(unlist(al), mu, m)
+    plot(NA, xlim = rng, ylim = rng, asp = 1, xlab = "", ylab = "", main = "mu* (dashed) and m = mu* + S D psi0 (red)")
+    for (A in al) points(A, col = adjustcolor("grey40", 0.3), pch = 16, cex = 0.6)
+    lines(rbind(mu, mu[1, ]), lty = 2); lines(rbind(m, m[1, ]), col = "red", lwd = 2)
+    text(m, labels = 1:k, pos = 3, cex = 0.7, col = "red")
+  }
+  
+  list(init = init, hyper = hyper, X = X, theta = theta, mu = mu, m = m, psi0 = psi0,
+       sigma2_0 = sigma2_0, sigma0_2 = sigma0_2, V = V, S_hat = S_hat, rms = rms,
+       warp_size = sqrt(sum((m - mu)^2)) / s_size, reflected = which(refl))
+}
 
 ##### Rccp for some functions #####
 Rcpp::cppFunction(depends = "RcppArmadillo", code = '

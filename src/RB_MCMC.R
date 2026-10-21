@@ -10,8 +10,6 @@ source("src/sample_eta.R", keep.source = TRUE)
 source("src/sample_phi.R", keep.source = TRUE)
 source("src/sample_psi.R", keep.source = TRUE)
 source("src/sample_sigma2.R", keep.source = TRUE)
-source("src/sample_xi.R", keep.source = TRUE)
-source("src/sample_z.R", keep.source = TRUE)
 total_iter = 1000
 burnin = 1
 thinning  = 10
@@ -200,18 +198,28 @@ RB_MCMC <- function(total_iter, burnin, thinning,
 #                          psi = psi,n = dim(X)[3], a = 0.01, b = 0.01, a_phi = a_phi, b_phi = b_phi, X = X)
 X <- sam$X/100
 X <- mat_not_demented
-X <- mat_demented
+X <- mat_demented/100
 X <- final_array/100
 X <- final_array
-
-prova <- init_mu_star (X,n_basis = 12, degree = 3, start = "gpa", ridge   = 1e-2, plot = TRUE,
+X <- X/100
+X
+prova <- init_mu_star (X,n_basis = 12, degree = 3, start = "gpa", ridge   = 1e-1, plot = TRUE,
                        Sigma_eta = diag(10, 2))
+
+prova <- init_mu_star_ordered(X,n_basis = 12, degree = 3,
+                                 nu = 4, a_tau = 2, b_tau = 0.5,
+                                 pen = 1e-3,            # weak smoothness penalty for the fit of log r
+                                 tau0 = c(0.1, 0.1), phi0 = NULL,
+                                 Sigma_eta = diag(1, 2),
+                                 d0 = 0.1,             # initial individual warp sd (fraction of shape size)
+                                 plot = TRUE) 
+
 init <- prova$init
 hyper <- prova$hyper
 
 X <- prova$X
-hyper$b_s2 <- 200
-hyper$a_s2 <- 2
+hyper$b_s2 <- 100
+hyper$a_s2 <- 1
 init$sigma_2
 hyper$a_sigma
 init$C
@@ -268,7 +276,7 @@ tic()
 par(mfrow = c(1, 3))
 library(profvis)
 profvis(expr = {
-  MCMC_samp <- RB_MCMC(total_iter = 10000, burnin = 1000, thinning  = 10, X = X, 
+  MCMC_samp <- RB_MCMC(total_iter = 2e5, burnin = 1e5, thinning  = 100, X = X, 
                      init = init, hyper = hyper)
 })
   toc()
@@ -281,6 +289,8 @@ try(visualize_results(output, X, "diobestia", sam))
 load("risultati_new.RData")
 output <- MCMC_samp$output
 #pair <- c(1, 12)
-
-
-
+data(gorf.dat)
+dati <- schizophrenia.dat
+dati
+plot(dati[,,1], type = "l")
+plotshapes(dati)
