@@ -553,6 +553,8 @@ create_output <- function(mcmc_iter, k_l, n, L){
   output$phi <- matrix(NA, nrow = mcmc_iter, ncol =1)
   output$psi <- list()
   output$W <- list()
+  output$S <- list()
+  output$SW <- list()
   # output$psi <- array(NA, dim = c(mcmc_iter, k_l - 5, 2))
   output$sigma_2 <- matrix(NA, nrow = mcmc_iter, ncol = 1)
   output$sigma_2_epurated <- matrix(NA, nrow = mcmc_iter, ncol = 1)
@@ -691,17 +693,6 @@ chol_det <- function(Lk){
 }
 
 
-# log_density <- function(init){
-#   # this function compute the log_likelihood associated to the model
-#   val <- sum(init$Q_R[1,1,] * init$residual[1,1,] +
-#                init$Q_R[1,2,] * init$residual[2,1,] +
-#                init$Q_R[2,1,] * init$residual[1,2,] +
-#                init$Q_R[2,2,] * init$residual[2,2,])
-#   
-#   # val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*log(det(init$Sigma)) - ((init$n))*log(det(init$C))
-#   val_2 <- -2*init$k_l*sum(log(init$alphas)) - ((init$n*init$k_l)/2)*determinant(init$Sigma, logarithm = T)$modulus
-#   return(-0.5 * val + val_2)
-# }
 
 log_density <- function(init) {
   Sg  <- init$Sigma
@@ -970,10 +961,12 @@ show <- function(p) {
 
 
 visualize_results <- function(output, X, file_name, sam = NULL){
+  options(error = NULL)
+  if (!is.null(dev.list())) { # controllino anti-bestemmie
+    dev.off()
+  }
   pdf(paste(file_name, sep = "_predictions", ".pdf"), width = 20, height = 5.5) # open pdf
-  par(mfrow = c(1, 4),
-      mar = c(3, 3, 3, 1),     
-      mgp = c(2, 0.7, 0)) # define the margins for the first window
+  par(mfrow = c(1, 4)) # define the margins for the first window
   
   n_iter <- dim(output$mean)[1] # number of iterations
   k_l <- dim(output$mean)[2] # number of landmarks
@@ -1003,6 +996,11 @@ visualize_results <- function(output, X, file_name, sam = NULL){
         border = NA,
         col = "red"
       )
+    }
+    
+    if (!is.null(sam)) {
+      points(sam$m, col = "yellow")
+      
     }
     # 
     plot(X_i, asp = 1, pch = 21, bg = "darkred",
@@ -1067,7 +1065,8 @@ visualize_results <- function(output, X, file_name, sam = NULL){
     show(gg_mcmc_diagnostics(output$tau[,2], param_name = "tau_2", real_values = NA))
     show(gg_mcmc_diagnostics(output$alphas/output$alphas[,1], param_name = "alpha ratios others vs 1", real_values = NA, TRUE))
     show(gg_mcmc_diagnostics((output$lambdas - output$lambdas[,1])%%(2*pi), param_name = "lambda diff others vs 1", real_values = NA, TRUE))
-    show(gg_mcmc_diagnostics(output$sigma_2_epurated, param_name = "sigma_2 epur", real_values = NA))
+    show(gg_mcmc_diagnostics(output$sigma_2[,], param_name = "sigma_2", real_values = NA))
+    show(gg_mcmc_diagnostics(output$sigma_2_epurated[,], param_name = "sigma_2 epur", real_values = NA))
   }
   
   else{
@@ -1076,6 +1075,7 @@ visualize_results <- function(output, X, file_name, sam = NULL){
     show(gg_mcmc_diagnostics(output$alphas/output$alphas[,1], param_name = "alpha ratios others vs 1", real_values = sam$alphas/sam$alphas[1], TRUE))
     show(gg_mcmc_diagnostics((output$lambdas - output$lambdas[,1])%%(2*pi), param_name = "lambda diff others vs 1", real_values = (sam$lambda - sam$lambda[1]) %%(2*pi), TRUE))
     V <- median(diag(sam$S_mat %*% sam$D_p %*% solve(t(sam$D_p)%*%sam$S_mat %*% sam$D_p) %*% t(sam$D_p) %*% sam$S_mat))
+    show(gg_mcmc_diagnostics(output$sigma_2[,], param_name = "sigma_2", real_values = sam$sigma_2))
     show(gg_mcmc_diagnostics(output$sigma_2_epurated[,], param_name = "sigma_2_epur", real_values = sam$sigma_2/V))
     # show(gg_mcmc_diagnostics(output$eta[,,1] - output$eta[,1,1] , param_name = "eta diff others vs 1", real_values = sam$eta[,1] - sam$eta[1,1], TRUE))
     # show(gg_mcmc_diagnostics(output$eta[,,2] - output$eta[,1,2] , param_name = "eta diff others vs 1", real_values = sam$eta[,2] - sam$eta[1,2], TRUE))
@@ -1130,7 +1130,7 @@ visualize_results <- function(output, X, file_name, sam = NULL){
       warping <- S%*%output$W[[isamp]][,,iobs]
       # Metto una coordinata a zero (Rimuovo traslazione)
       mean_noloc[, , isamp] <- mean_orig[, , isamp] - matrix(mean_orig[pair[1], , isamp], nrow = k, ncol = 2, byrow = T)
-      warping <- warping
+      warping <- warping - matrix(mean_orig[pair[1], , isamp], nrow = k, ncol = 2, byrow = T)
       mean_noloc_i[, , isamp] <- mean_noloc[, , isamp] + warping
       sigma_noloc[, , isamp] <- sigma_orig[, , isamp]
       
@@ -1251,7 +1251,7 @@ visualize_results <- function(output, X, file_name, sam = NULL){
           c(X_i[,2], X_i[1,2]),
           col = "red", lwd = 2)
   }
-  dev.off()
+  dev.off() 
 }
 
 plot_status <- function(init_env, hyper_env, X, file, it, i_unit = 1) {

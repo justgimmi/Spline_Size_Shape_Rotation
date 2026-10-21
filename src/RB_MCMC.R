@@ -51,7 +51,9 @@ RB_MCMC <- function(total_iter, burnin, thinning,
   burn  = TRUE
   hyper_env$B_sim <- Basis_Construction(init_env$thetas, hyper_env$n_basis, hyper_env$degree)
   hyper_env$log_lik <- log_density(init_env)
-  dev.off()
+  if (!is.null(dev.list())) {
+    dev.off() 
+  }
   par(mfrow = c(1, 3))
   #init_env$z <- 1
   # z_temp <- numeric(thin)
@@ -140,14 +142,6 @@ RB_MCMC <- function(total_iter, burnin, thinning,
         #                  t(hyper_env$D_p) %*% t(hyper_env$S_mat ))
         print(init_env$sigma_2/hyper_env$V)
         print(init_env$sigma_2*hyper_env$V/(norm(init_env$mean, type = "F")^2))
-        s <- sqrt(sum(scale(init_env$mean, scale = FALSE)^2))
-        
-        ev <- eigen(init_env$Sigma, symmetric = TRUE)$values
-        s  <- sqrt(sum(scale(init_env$mean, scale = FALSE)^2))
-        print(c(d = sqrt(init_env$sigma_2 * hyper_env$V) / s,
-          noise_max = sqrt(ev[1]) / s, noise_min = sqrt(ev[2]) / s))
-        psi_bar <- apply(init_env$psi, c(1, 2), mean)
-        print(sum(psi_bar^2) / mean(apply(init_env$psi, 3, function(p) sum(p^2))))
 
       }
     
@@ -176,6 +170,8 @@ RB_MCMC <- function(total_iter, burnin, thinning,
     output$gammas[i, ] <- init_env$gammas
     output$psi[[i]] <- init_env$psi
     output$W[[i]] <- init_env$W
+    output$S[[i]] <- hyper_env$S_mat
+    output$SW[[i]] <- hyper_env$SW
     output$sigma_2[i, ] <- init_env$sigma_2
     output$sigma_2_epurated[i,] <- init_env$sigma_2/hyper_env$V
     app <- compute_proc_dist(init_env, X, X_pred)
@@ -277,208 +273,14 @@ profvis(expr = {
 })
   toc()
 output <- MCMC_samp$output
-
-
-visualize_results(output, X, "diocan", sam)
+output
+dev.off()
+dev.list()
+options(error = NULL)
+try(visualize_results(output, X, "diobestia", sam))
 load("risultati_new.RData")
 output <- MCMC_samp$output
 #pair <- c(1, 12)
 
 
-for (iobs in 1:n) {
-  
-  # 1. Feedback reale sulla console R
-  cat(sprintf("\rElaborazione Unità: %3d", iobs))
-  flush.console()
-  
-  krot <- pair[2]
-  for (isamp in 1:nsamp){
-    ## Creo oggetti originali
-    rrr <- Rmat(MCMC_samp$output$lambdas[isamp, iobs])
-    sigma_orig[, , isamp] <- t(rrr) %*% MCMC_samp$output$Sigma[isamp, , ] %*% rrr * MCMC_samp$output$alphas[isamp, iobs]^2
-    mean_orig[, , isamp] <- MCMC_samp$output$mean[isamp, ,] # mean
-    S <- S_mat_constructor(mean_orig[, , isamp])
-    # appoggio <-  MCMC_samp$output$mean_i[[isamp]][, , iobs] # mean_i
-    # mean_orig[, , isamp] <- MCMC_samp$output$mean_i[[isamp]][, , iobs]
-    warping <- S%*%output$W[[isamp]][,,iobs]
-    # Metto una coordinata a zero (Rimuovo traslazione)
-    mean_noloc[, , isamp] <- mean_orig[, , isamp] - matrix(mean_orig[pair[1], , isamp], nrow = k, ncol = 2, byrow = T)
-    warping <- warping
-    mean_noloc_i[, , isamp] <- mean_noloc[, , isamp] + warping
-    sigma_noloc[, , isamp] <- sigma_orig[, , isamp]
-    
-    # Tolgo la rotazione
-    angle <- atan2(mean_noloc[krot, 2, isamp], mean_noloc[krot, 1, isamp])
-    mean_norot[, , isamp] <- mean_noloc[, , isamp] %*% Rmat(angle)
-    warping <- warping %*% Rmat(angle)
-    mean_norot_i[, , isamp] <- mean_norot[, , isamp] +  warping
-    sigma_norot[, , isamp] <- t(Rmat(angle)) %*% sigma_noloc[, , isamp] %*% Rmat(angle)
-    
-    # Stabilizzo elevando la media campionaria
-    #mean_norot[, , isamp] <- mean_norot[, , isamp] - matrix(colMeans(mean_norot[, , isamp]), nrow = k, ncol = 2, byrow = T)
-    #mean_norot_i[, , isamp] <- mean_norot_i[, , isamp] - matrix(colMeans(mean_norot_i[, , isamp]), nrow = k, ncol = 2, byrow = T)
-    normx <- norm(mean_norot[, , isamp])
-    
-    mean_nosize[, , isamp] <- mean_norot[, , isamp] / normx
-    warping <- warping/normx
-    mean_nosize_i[, , isamp] <- mean_nosize[, , isamp] + warping
-    sigma_nosize[, , isamp] <- sigma_norot[, , isamp] / normx^2
-  }
-  
-  # Calcoliamo la forma media a posteriori per disegnare una linea guida pulita
-  mean_shape_posterior <- apply(mean_nosize, c(1, 2), mean)
-  mean_shape_posterior_i <- apply(mean_nosize_i, c(1, 2), mean)
-  warp_mean[, , iobs] <- mean_shape_posterior_i
-  # ====================================================================
-  # PAGINA 1: Il "Cloud" dei Landmark allineati + Forma Media
-  # ====================================================================
-  par(mfrow = c(1, 1), mar = c(5, 5, 4, 2))
-  
-  plot(0, 0, type = "n", 
-       xlim = range(mean_nosize[, 1, ]), 
-       ylim = range(mean_nosize[, 2, ]),
-       asp = 1, # FONDAMENTALE: mantiene le proporzioni geometriche reali
-       xlab = "X", ylab = "Y",
-       main = paste("Landmark Allineati Unità", iobs))
-  
-  # Disegniamo i punti di ogni iterazione (usando una trasparenza per vedere la densità)
-  colors_palette <- rainbow(k)
-  for (iii in 1:k) {
-    points(t(mean_nosize[iii, , ]), col = adjustcolor(colors_palette[iii], alpha.f = 0.4), cex = 1, pch = 20)
-  }
-  
-  # Disegniamo la sagoma della forma media a posteriori che unisce i punti
-  lines(c(mean_shape_posterior[,1], mean_shape_posterior[1,1]), 
-        c(mean_shape_posterior[,2], mean_shape_posterior[1,2]), 
-        col = "black", lwd = 2, lty = 1)
-  
-  
-  # Evidenziamo i landmark medi stimati
-  points(mean_shape_posterior, col = "black", bg = colors_palette, pch = 21, cex = 1.4, lwd = 1.5)
-  # ====================================================================
-  # PAGINE 2+: I Traceplot dei Landmark (X e Y)
-  # ====================================================================
-  par(mfrow = c(3, 2), mar = c(4, 4, 2.5, 1)) # Ripristiniamo la griglia ordinata 3x2
-  # for (iii in 1:k) {
-  #   for (ip in 1:2) {
-  #     coord_label <- ifelse(ip == 1, "Coord X", "Coord Y")
-  #     
-  #     plot(mean_nosize[iii, ip, ], type = "l", col = "steelblue",
-  #          xlab = "Iterazioni MCMC", ylab = coord_label,
-  #          main = paste("Media", iii, "-", coord_label))
-  #     print(ESS(mean_nosize[iii, ip, ]))
-  #     
-  #     # Linea rossa tratteggiata sul valore medio stimato per controllare la convergenza
-  #     abline(h = mean_shape_posterior[iii, ip], col = "red", lty = 2, lwd = 1.5)
-  #   }
-  # }
-  
-  for (iii in 1:k) {
-    for (ip in 1:2) {
-      coord_label <- ifelse(ip == 1, "Coord X", "Coord Y")
-      
-      plot(mean_nosize_i[iii, ip, ], type = "l", col = "steelblue",
-           xlab = "Iterazioni MCMC", ylab = coord_label,
-           main = paste("Media", iii, "-", coord_label))
-      print(ESS(mean_nosize_i[iii, ip, ]))
-      
-      # Linea rossa tratteggiata sul valore medio stimato per controllare la convergenza
-      abline(h = mean_shape_posterior_i[iii, ip], col = "red", lty = 2, lwd = 1.5)
-    }
-  }
-  
-  # ====================================================================
-  # PAGINA FINALE: I Traceplot della matrice di covarianza Sigma_nosize
-  # ====================================================================
-  # Creiamo una griglia 2x2 perfetta appositamente per la matrice 2x2 di Sigma
-  par(mfrow = c(2, 2), mar = c(4, 4, 2.5, 1))
-  
-  sigma_labels <- matrix(c("Var(X)", "Cov(X,Y)", "Cov(Y,X)", "Var(Y)"), 2, 2)
-  for (i in 1:2) {
-    for (j in 1:2) {
-      plot(sigma_nosize[i, j, ], type = "l", col = "darkorange",
-           xlab = "Iterazioni MCMC", ylab = "Valore",
-           main = paste("Sigma -", sigma_labels[i, j]))
-      
-      # Linea di riferimento sul valore medio di Sigma
-      abline(h = mean(sigma_nosize[i, j, ]), col = "red", lty = 2, lwd = 1.5)
-    }
-  }
-  
-  dev.off()
-}
-
-dev.off()
-pdf("warp_per_unit_warps.pdf", width = 11, height = 5.5)
-amp  <- 1                       # 3-5 se lo spostamento è piccolo: amplifica solo le frecce
-cols <- rainbow(k)
-
-for (iobs in 1:n) {
-  m0 <- mean_shape_posterior       # mu*
-  m1 <- warp_mean[,,iobs]     # mu* + S W_i
-  rng  <- range(c(mean_nosize[,1,], mean_nosize_i[,1,]))
-  rngy <- range(c(mean_nosize[,2,], mean_nosize_i[,2,]))
-  
-  par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
-  
-  # (a) forme medie posteriori e spostamento
-  plot(0, 0, type = "n", xlim = rng, ylim = rngy, asp = 1, xlab = "X", ylab = "Y",
-       main = paste0("Unità ", iobs, ": mu* (tratteggio) vs mu* + S W (rosso)"))
-  lines(rbind(m0, m0[1, ]), lty = 2, lwd = 2)
-  lines(rbind(m1, m1[1, ]), col = "red", lwd = 2)
-  arrows(m0[,1], m0[,2], m0[,1] + amp*(m1[,1]-m0[,1]), m0[,2] + amp*(m1[,2]-m0[,2]),
-         length = 0.06, col = "blue", lwd = 1.5)
-  points(m0, pch = 21, bg = "white", cex = 1.2)
-  points(m1, pch = 19, col = "red", cex = 0.9)
-  text(m0, labels = 1:k, pos = 3, cex = 0.7)
-  X_i <- X[,,iobs]
-  plot(X_i, asp = 1, pch = 21, bg = "darkred",
-       main = "i-th unit", xlim = range(X_i[,1]) + c(-0.1, 0.1),
-       ylim = range(X_i[,2]) + c(-0.1, 0.1) )
-  
-  lines(c(X_i[,1], X_i[1,1]),
-        c(X_i[,2], X_i[1,2]),
-        col = "red", lwd = 2)
-  # # (b) nuvole posteriori: grigio = mu*, colore = mu* + S W_i
-  # plot(0, 0, type = "n", xlim = rng, ylim = rngy, asp = 1, xlab = "X", ylab = "Y",
-  #      main = "Nuvole posteriori")
-  # for (j in 1:k) {
-  #   points(t(mean_nosize[j, , ]),   col = adjustcolor("grey40", 0.25), pch = 20, cex = 0.7)
-  #   points(t(mean_nosize_i[j, , ]), col = adjustcolor(cols[j], 0.35),  pch = 20, cex = 0.7)
-  # }
-  # lines(rbind(m0, m0[1, ]), lty = 2)
-  # lines(rbind(m1, m1[1, ]), col = "red", lwd = 2)
-}
-dev.off()
-
-library(LaplacesDemon)
-par(mfrow = c(1, 1))
-ESS(output_identificato$eta[,3,1])
-plot(output_identificato$eta[,3,1], type = "l")
-ESS(output_identificato$Sigma[,2,2])
-plot(output_identificato$Sigma[,2,2])
-par(mfrow = c(1,1))
-plot(X[,,2])
-points(X[1,1,2],X[1,2,2],  col = "red", pch = 16)
-points(X[12,1,2],X[12,2,2],  col = "red", pch = 16)
-dim(output_identificato$mean)
-plot(output_identificato$mean[1,,])
-plot(output$mean[1,,])
-
-
-par(mfrow = c(1, 2))
-for (i in 1:100) {
-  X_new_i <- output_identificato$mean[i,,]
-  X_mean <- output$mean[i,,]
-  
-  # plot(rot, asp = 1, pch = 21, bg = "darkgreen", main = "Latent mu")
-  # lines(c(rot[,1], rot[1,1]), c(rot[,2], rot[1,2]), col = "forestgreen", lwd = 2)
-  
-  plot(X_mean, asp = 1, pch = 21, bg = "darkblue", main = "Not id")
-  lines(c(X_mean[,1], X_mean[1,1]), c(X_mean[,2], X_mean[1,2]), col = "blue", lwd = 2)
-  plot(X_new_i, asp = 1, pch = 21, bg = "black", main = "Ident")
-  lines(c(X_new_i[,1], X_new_i[1,1]), c(X_new_i[,2], X_new_i[1,2]), col = "brown", lwd = 2)
-  
-  
-}
 
