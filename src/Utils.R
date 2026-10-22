@@ -92,9 +92,9 @@ rmvnorm_rd <- function(n, mu, Precision, tol) {
 
 
 
-in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, tau = c(0.1, 0.1),phi = 0.3, sigma_2 = 0.01,
+in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, tau = c(0.1, 0.1),sigma_2 = 0.01,
                             beta_values = NA, lambda = NA, alphas = NA, eta = NA, 
-                            Sigma_e = NA, indep_error = TRUE){
+                            Sigma_e = NA, indep_error = TRUE){ # this functions can be used to sample directly from the model
   # K_l --> lanmdarks number 
   # thetas --> vector of angles
   # n_int_knots --> number of internal_knots
@@ -156,9 +156,8 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   mu_mean <- cbind(mu_mean_x, mu_mean_y) # mean configuration 
   k_free <- K_l - 3
   S_mat <- S_mat_constructor(mu_mean)
-
-  
   D_p <- D_p_constructor(mu_mean, K_l)
+  V <- median(D_p %*% S_mat %*% solve(t(D_p) %*% S_mat %*% D_p) %*% S_mat %*% t(D_p))
   psi <- array(0, dim = c(k_free, 2, n))
   if (sigma_2 == 0 && indep_error == TRUE) {
     Precision <- diag(1, nrow = k_free)
@@ -244,13 +243,12 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   final_param$Sigma_e <- Sigma_e
   final_param$X <- X
   final_param$betas <- beta_values
-  final_param$phi <- phi
   final_param$psi <- psi
   final_param$S_mat <- S_mat
   final_param$W <- W
   final_param$D_p <- D_p
   final_param$sigma_2 <- sigma_2
-  
+  final_param$sigma_2_epur <- sigma_2/V
   return(final_param)
 
 }
@@ -960,7 +958,7 @@ show <- function(p) {
 
 
 
-visualize_results <- function(output, X, file_name, sam = NULL){
+visualize_results <- function(output, hypers, X, file_name, sam = NULL){
   options(error = NULL)
   if (!is.null(dev.list())) { # controllino anti-bestemmie
     dev.off()
@@ -1004,8 +1002,8 @@ visualize_results <- function(output, X, file_name, sam = NULL){
     }
     # 
     plot(X_i, asp = 1, pch = 21, bg = "darkred",
-         main = "i-th unit", xlim = range(X_i[,1]) + c(-0.1, 0.1),
-         ylim = range(X_i[,2]) + c(-0.1, 0.1) )
+         main = "i-th unit", xlim = range(X_i[,1]) + c(-0.01, 0.01),
+         ylim = range(X_i[,2]) + c(-0.01, 0.01) )
     
     lines(c(X_i[,1], X_i[1,1]),
           c(X_i[,2], X_i[1,2]),
@@ -1017,8 +1015,8 @@ visualize_results <- function(output, X, file_name, sam = NULL){
     low_i <- apply(samp_i, c(1,2), quantile, 0.025)
     high_i <- apply(samp_i, c(1,2), quantile, 0.975)
     plot(mean_samp_i, asp = 1, pch = 21, bg = "black",
-         main = "Estimated config + CI",  xlim = range(mean_samp_i[,1]) + c(-0.1, 0.1),
-         ylim = range(mean_samp_i[,2]) + c(-0.1, 0.1))
+         main = "Estimated config + CI",  xlim = range(mean_samp_i[,1]) + c(-0.01, 0.01),
+         ylim = range(mean_samp_i[,2]) + c(-0.01, 0.01))
     # 
     lines(c(mean_samp_i[,1], mean_samp_i[1,1]),
           c(mean_samp_i[,2], mean_samp_i[1,2]),
@@ -1040,7 +1038,8 @@ visualize_results <- function(output, X, file_name, sam = NULL){
     low_post_i <- apply(posterior_pred, c(1,2), quantile, 0.025)
     high_post_i <- apply(posterior_pred, c(1,2), quantile, 0.975)
     plot(post_samp_i, asp = 1, pch = 21, bg = "black",
-         main = "Posterior Predictive", xlim = range(post_samp_i[,1]) + c(-0.1, 0.1), ylim = range(post_samp_i[,2]) + c(-0.1, 0.1))
+         main = "Posterior Predictive", xlim = range(post_samp_i[,1]) + c(-0.01, 0.01),
+         ylim = range(post_samp_i[,2]) + c(-0.01, 0.01))
     lines(c(post_samp_i[,1], post_samp_i[1,1]),
           c(post_samp_i[,2], post_samp_i[1,2]),
           col = "brown", lwd = 2)
@@ -1112,7 +1111,7 @@ visualize_results <- function(output, X, file_name, sam = NULL){
   sigma_norot <- array(NA, c(2, 2, nsamp))
   sigma_nosize <- array(NA, c(2, 2, nsamp))
   warp_mean <- array(NA, c(k, 2, n))
-  pdf(paste(file_name, sep = "_mean_ident", ".pdf"), width = 20, height = 5.5) # open pdf
+  pdf(paste(file_name, sep = "_mean_ident", ".pdf"), width = 15, height = 8.5) # open pdf
   
   for (iobs in 1:n) {
     
@@ -1219,7 +1218,7 @@ visualize_results <- function(output, X, file_name, sam = NULL){
   
   dev.off()
   
-  pdf(paste(file_name, sep = "funny", ".pdf"), width = 20, height = 5.5) # open pdf
+  pdf(paste(file_name, sep = "_funny", ".pdf"), width = 10, height = 8.5) # open pdf
   
   amp  <- 1       
   cols <- rainbow(k)
@@ -1244,14 +1243,49 @@ visualize_results <- function(output, X, file_name, sam = NULL){
     text(m0, labels = 1:k, pos = 3, cex = 0.7)
     X_i <- X[,,iobs]
     plot(X_i, asp = 1, pch = 21, bg = "darkred",
-         main = "i-th unit", xlim = range(X_i[,1]) + c(-0.1, 0.1),
-         ylim = range(X_i[,2]) + c(-0.1, 0.1) )
+         main = "i-th unit", xlim = range(X_i[,1]) + c(-0.001, 0.001),
+         ylim = range(X_i[,2]) + c(-0.001, 0.001) )
     
     lines(c(X_i[,1], X_i[1,1]),
           c(X_i[,2], X_i[1,2]),
           col = "red", lwd = 2)
   }
   dev.off() 
+  
+  pdf(paste(file_name, sep = "_continous_shape", ".pdf"), width = 8, height = 5.5)
+  par(mfrow = c(1,1))
+  th_grid <- seq(0, 2 * pi, length.out = 400)
+  r_grid <- matrix(NA, nrow = nsamp, ncol = 400)
+  curved <- array(NA, dim = c(400, 2, nsamp))
+  for (s in 1:nsamp) {
+    r_grid[s, ] <- as.numeric(exp(Basis_Construction(th_grid, hypers$n_basis, hypers$degree) %*% output$betas[s,]))
+    curved[,,s] <- cbind(r_grid[s, ] * cos(th_grid), r_grid[s, ] * sin(th_grid))
+  }
+  
+  mean_low <- apply(curved, c(1,2), quantile, probs = 0.025) # compute quantiles
+  mean_high <- apply(curved, c(1,2), quantile, probs = 0.975)
+  mean_samp_mean <- apply(curved, c(1,2), mean) # compute average value
+  
+  
+  plot(mean_samp_mean, asp = 1, pch = 21, bg = "black",
+       main = "Continous shape", xlim = range(mean_samp_mean[,1]) + c(-0.001, 0.001),
+       ylim = range(mean_samp_mean[,2]) + c(-0.001, 0.001))
+  lines(c(mean_samp_mean[,1], mean_samp_mean[1,1]),
+        c(mean_samp_mean[,2], mean_samp_mean[1,2]),
+        col = "brown", lwd = 2)
+  for (k in 1:400) {
+    
+    polygon(
+      x = c(mean_low[k,1], mean_high[k,1],
+            mean_high[k,1], mean_low[k,1]),
+      y = c(mean_low[k,2], mean_low[k,2],
+            mean_high[k,2], mean_high[k,2]),
+      col = rgb(0,0,1,0.40),
+      border = NA
+    )
+  }
+  dev.off()
+  
 }
 
 plot_status <- function(init_env, hyper_env, X, file, it, i_unit = 1) {

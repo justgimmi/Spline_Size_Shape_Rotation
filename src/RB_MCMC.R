@@ -202,8 +202,8 @@ X <- mat_demented/100
 X <- final_array/100
 X <- final_array
 X <- X/100
-X
-prova <- init_mu_star (X,n_basis = 12, degree = 3, start = "gpa", ridge   = 1e-1, plot = TRUE,
+X <- X_red/100
+prova <- init_mu_star (X,n_basis = 16, degree = 3, start = "circle", ridge   = 1e-1, plot = TRUE,
                        Sigma_eta = diag(10, 2))
 
 prova <- init_mu_star_ordered(X,n_basis = 12, degree = 3,
@@ -218,8 +218,8 @@ init <- prova$init
 hyper <- prova$hyper
 
 X <- prova$X
-hyper$b_s2 <- 100
-hyper$a_s2 <- 1
+hyper$b_s2 <- 2
+hyper$a_s2 <- 2
 init$sigma_2
 hyper$a_sigma
 init$C
@@ -276,16 +276,17 @@ tic()
 par(mfrow = c(1, 3))
 library(profvis)
 profvis(expr = {
-  MCMC_samp <- RB_MCMC(total_iter = 2e5, burnin = 1e5, thinning  = 100, X = X, 
+  MCMC_samp <- RB_MCMC(total_iter = 10000, burnin = 1000, thinning  = 10, X = X, 
                      init = init, hyper = hyper)
 })
   toc()
 output <- MCMC_samp$output
+hypers <- MCMC_samp$hyper
 output
 dev.off()
 dev.list()
 options(error = NULL)
-try(visualize_results(output, X, "diobestia", sam))
+try(visualize_results(output, hypers, X, "cuore"))
 load("risultati_new.RData")
 output <- MCMC_samp$output
 #pair <- c(1, 12)
