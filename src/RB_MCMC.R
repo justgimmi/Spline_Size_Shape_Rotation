@@ -1,15 +1,15 @@
-source("src/Packages.R", keep.source = TRUE)
-source("src/Utils.R", keep.source = TRUE)
-source("src/sample_tau.R", keep.source = TRUE)
-source("src/sample_thetas.R", keep.source = TRUE)
-source("src/sample_lambdas.R", keep.source = TRUE)
-source("src/sample_Sigma.R", keep.source = TRUE)
-source("src/sample_alphas.R", keep.source = TRUE)
-source("src/sample_betas.R", keep.source = TRUE)
-source("src/sample_eta.R", keep.source = TRUE)
-source("src/sample_phi.R", keep.source = TRUE)
-source("src/sample_psi.R", keep.source = TRUE)
-source("src/sample_sigma2.R", keep.source = TRUE)
+require(here)
+source(here("src/Packages.R"), keep.source = TRUE)
+source(here("src/Utils.R"), keep.source = TRUE)
+source(here("src/sample_tau.R"), keep.source = TRUE)
+source(here("src/sample_thetas.R"), keep.source = TRUE)
+source(here("src/sample_lambdas.R"), keep.source = TRUE)
+source(here("src/sample_Sigma.R"), keep.source = TRUE)
+source(here("src/sample_alphas.R"), keep.source = TRUE)
+source(here("src/sample_betas.R"), keep.source = TRUE)
+source(here("src/sample_eta.R"), keep.source = TRUE)
+source(here("src/sample_psi.R"), keep.source = TRUE)
+source(here("src/sample_sigma2.R"), keep.source = TRUE)
 total_iter = 1000
 burnin = 1
 thinning  = 10
@@ -203,16 +203,10 @@ X <- final_array/100
 X <- final_array
 X <- X/100
 X <- X_red/100
-prova <- init_mu_star (X,n_basis = 16, degree = 3, start = "circle", ridge   = 1e-1, plot = TRUE,
+X <- sam_tanto_warping$X/100
+prova <- init_mu_star (X,n_basis = 16, degree = 3, start = "gpa", ridge   = 1e-1, plot = TRUE,
                        Sigma_eta = diag(10, 2))
-
-prova <- init_mu_star_ordered(X,n_basis = 12, degree = 3,
-                                 nu = 4, a_tau = 2, b_tau = 0.5,
-                                 pen = 1e-3,            # weak smoothness penalty for the fit of log r
-                                 tau0 = c(0.1, 0.1), phi0 = NULL,
-                                 Sigma_eta = diag(1, 2),
-                                 d0 = 0.1,             # initial individual warp sd (fraction of shape size)
-                                 plot = TRUE) 
+load(here("Simulazioni/Hearts/little_warp_asym.RData"))
 
 init <- prova$init
 hyper <- prova$hyper
@@ -279,7 +273,9 @@ profvis(expr = {
   MCMC_samp <- RB_MCMC(total_iter = 10000, burnin = 1000, thinning  = 10, X = X, 
                      init = init, hyper = hyper)
 })
-  toc()
+toc()
+gg_mcmc_diagnostics(MCMC_samp$output$sigma_2_epurated[,], param_name = "sigma",real_values = sam_poco_warping$sigma_2)
+
 output <- MCMC_samp$output
 hypers <- MCMC_samp$hyper
 output
