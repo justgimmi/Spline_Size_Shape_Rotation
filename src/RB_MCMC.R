@@ -196,98 +196,98 @@ RB_MCMC <- function(total_iter, burnin, thinning,
 
 # hyper <- hyperparameters(2, 0.5, 8, 3, width_theta = 1, m = 6, nu = 10,
 #                          psi = psi,n = dim(X)[3], a = 0.01, b = 0.01, a_phi = a_phi, b_phi = b_phi, X = X)
-X <- sam$X/100
-X <- mat_not_demented
-X <- mat_demented/100
-X <- final_array/100
-X <- final_array
-X <- X/100
-X <- X_red/100
-X <- sam_tanto_warping$X/100
-prova <- init_mu_star (X,n_basis = 16, degree = 3, start = "gpa", ridge   = 1e-1, plot = TRUE,
-                       Sigma_eta = diag(10, 2))
-load(here("Simulazioni/Hearts/little_warp_asym.RData"))
-
-init <- prova$init
-hyper <- prova$hyper
-
-X <- prova$X
-hyper$b_s2 <- 2
-hyper$a_s2 <- 2
-init$sigma_2
-hyper$a_sigma
-init$C
-hyper$nu
-init$Sigma
-init$sigma_2
-init$C
-hyper$Sigma_a
-X <- prova$X
-hyper$b_phi
-hyper$Sigma_eta_new
-hyper$a_sigma
-hyper$degree
-hyper$a_phi
-# save(sam, X, hyper, init, file = "No_warp.RData")
-# save(sam, X, hyper, init, file = "warp_indep.RData")
-load("warp.RData")
-load("pesci.RData")
-save(sam, X, hyper, init, file = "warp.RData")
-# save(X, hyper, init, file = "No_Demente.RData")
-save(X, hyper, init, file = "Demente.RData")
-save(X, hyper, init, file = "foglie.RData")
-save(X, hyper, init, file = "pesci.RData")
-load("pesci_MCMC_I.RData")
-# load("No_Demente.RData")
-# load("No_warp.RData")
-load("Warp_MCMC_I.RData")
-hyper$log_lik
-hyper$K
-hyper$L
-init$psi
-init$W
-init$sigma_2
-init$chi
-# init$alphas <- init$alphas/init$alphas[1]
-# init$lambdas <- ((init$lambdas - init$lambdas[1])%% (2*pi)) 
-# init$eta <- init$eta - matrix(init$eta[1,], nrow = n, ncol = 2, byrow = TRUE)
+# X <- sam$X/100
+# X <- mat_not_demented
+# X <- mat_demented/100
+# X <- final_array/100
+# X <- final_array
+# X <- X/100
+# X <- X_red/100
+# X <- sam_tanto_warping$X/100
+# prova <- init_mu_star (X,n_basis = 16, degree = 3, start = "gpa", ridge   = 1e-1, plot = TRUE,
+#                        Sigma_eta = diag(10, 2))
+# load(here("Simulazioni/Hearts/little_warp_asym.RData"))
 # 
-# hyper <- hyperparameters(1, 5e-4, 10, 3, width_theta = 1, m = 6, nu = 4,
-#                          psi = psi,n = dim(X)[3], a = 0.01, b = 0.01, a_phi = a_phi, b_phi = b_phi, X = X)
-# plot(X[,,1])
-# for (i in 1:25) {
-#   text(X[i,1,1], X[i, 2, 1], i)
-#   
-# }
-# init <- init_param(0.01, runif(n = 100)*2*pi, sort(runif(n = 25)*2*pi),rmvnorm_rd(n = 1, mu = 0, Precision =  (1/0.01)*hyper$K, tol = 1e-6),
-#                    diag(0.01, nrow = 2),
-#                    eta_sync,rgamma(n = 100, 1, 1), n <- dim(X)[3])
-# init <- init_param(0.01, runif(n = 100)*2*pi, sam$theta,sam$betas, diag(0.01, nrow = 2),
-#                    sam$eta,rgamma(n = 100, 1, 1), n <- dim(sam$X)[3])
-hyper$a_sigma
-init$Z
-tic()
-par(mfrow = c(1, 3))
-library(profvis)
-profvis(expr = {
-  MCMC_samp <- RB_MCMC(total_iter = 10000, burnin = 1000, thinning  = 10, X = X, 
-                     init = init, hyper = hyper)
-})
-toc()
-gg_mcmc_diagnostics(MCMC_samp$output$sigma_2_epurated[,], param_name = "sigma",real_values = sam_poco_warping$sigma_2)
-
-output <- MCMC_samp$output
-hypers <- MCMC_samp$hyper
-output
-dev.off()
-dev.list()
-options(error = NULL)
-try(visualize_results(output, hypers, X, "cuore"))
-load("risultati_new.RData")
-output <- MCMC_samp$output
-#pair <- c(1, 12)
-data(gorf.dat)
-dati <- schizophrenia.dat
-dati
-plot(dati[,,1], type = "l")
-plotshapes(dati)
+# init <- prova$init
+# hyper <- prova$hyper
+# 
+# X <- prova$X
+# hyper$b_s2 <- 2
+# hyper$a_s2 <- 2
+# init$sigma_2
+# hyper$a_sigma
+# init$C
+# hyper$nu
+# init$Sigma
+# init$sigma_2
+# init$C
+# hyper$Sigma_a
+# X <- prova$X
+# hyper$b_phi
+# hyper$Sigma_eta_new
+# hyper$a_sigma
+# hyper$degree
+# hyper$a_phi
+# # save(sam, X, hyper, init, file = "No_warp.RData")
+# # save(sam, X, hyper, init, file = "warp_indep.RData")
+# load("warp.RData")
+# load("pesci.RData")
+# save(sam, X, hyper, init, file = "warp.RData")
+# # save(X, hyper, init, file = "No_Demente.RData")
+# save(X, hyper, init, file = "Demente.RData")
+# save(X, hyper, init, file = "foglie.RData")
+# save(X, hyper, init, file = "pesci.RData")
+# load("pesci_MCMC_I.RData")
+# # load("No_Demente.RData")
+# # load("No_warp.RData")
+# load("Warp_MCMC_I.RData")
+# hyper$log_lik
+# hyper$K
+# hyper$L
+# init$psi
+# init$W
+# init$sigma_2
+# init$chi
+# # init$alphas <- init$alphas/init$alphas[1]
+# # init$lambdas <- ((init$lambdas - init$lambdas[1])%% (2*pi)) 
+# # init$eta <- init$eta - matrix(init$eta[1,], nrow = n, ncol = 2, byrow = TRUE)
+# # 
+# # hyper <- hyperparameters(1, 5e-4, 10, 3, width_theta = 1, m = 6, nu = 4,
+# #                          psi = psi,n = dim(X)[3], a = 0.01, b = 0.01, a_phi = a_phi, b_phi = b_phi, X = X)
+# # plot(X[,,1])
+# # for (i in 1:25) {
+# #   text(X[i,1,1], X[i, 2, 1], i)
+# #   
+# # }
+# # init <- init_param(0.01, runif(n = 100)*2*pi, sort(runif(n = 25)*2*pi),rmvnorm_rd(n = 1, mu = 0, Precision =  (1/0.01)*hyper$K, tol = 1e-6),
+# #                    diag(0.01, nrow = 2),
+# #                    eta_sync,rgamma(n = 100, 1, 1), n <- dim(X)[3])
+# # init <- init_param(0.01, runif(n = 100)*2*pi, sam$theta,sam$betas, diag(0.01, nrow = 2),
+# #                    sam$eta,rgamma(n = 100, 1, 1), n <- dim(sam$X)[3])
+# hyper$a_sigma
+# init$Z
+# tic()
+# par(mfrow = c(1, 3))
+# library(profvis)
+# profvis(expr = {
+#   MCMC_samp <- RB_MCMC(total_iter = 10000, burnin = 1000, thinning  = 10, X = X, 
+#                      init = init, hyper = hyper)
+# })
+# toc()
+# gg_mcmc_diagnostics(MCMC_samp$output$sigma_2_epurated[,], param_name = "sigma",real_values = sam_poco_warping$sigma_2)
+# 
+# output <- MCMC_samp$output
+# hypers <- MCMC_samp$hyper
+# output
+# dev.off()
+# dev.list()
+# options(error = NULL)
+# try(visualize_results(output, hypers, X, "cuore"))
+# load("risultati_new.RData")
+# output <- MCMC_samp$output
+# #pair <- c(1, 12)
+# data(gorf.dat)
+# dati <- schizophrenia.dat
+# dati
+# plot(dati[,,1], type = "l")
+# plotshapes(dati)

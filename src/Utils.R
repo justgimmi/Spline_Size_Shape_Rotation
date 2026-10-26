@@ -879,21 +879,28 @@ init_mu_star <- function(X,
   k <- dim(X)[1]; n <- dim(X)[3]
   Rot <- function(l) matrix(c(cos(l), -sin(l), sin(l), cos(l)), 2, byrow = TRUE)
   ang <- function(M) atan2(M[, 2], M[, 1]) %% (2 * pi)
+  if (start == "circle") {
+    theta_gpa <- runif(n = k, min = 0, max = 2*pi)
+    theta_gpa <- sort(theta_gpa)
+    
+  }
   
-  ## 1. order landmarks by the GPA angles, rerun GPA, fix a possible cyclic shift
-  mean_shape <- shapes::procGPA(X, scale = TRUE)$mshape
-  theta_gpa <- atan2(mean_shape[,2], mean_shape[,1])
-  theta_gpa <- ifelse(theta_gpa < 0, theta_gpa + 2*pi, theta_gpa)
-  orders <- order(theta_gpa)
-  X <- X[orders, , ]
-  mean_shape <- shapes::procGPA(X, scale = TRUE)$mshape
-  theta_gpa  <- atan2(mean_shape[,2], mean_shape[,1])
-  theta_gpa <- ifelse(theta_gpa < 0, theta_gpa + 2*pi, theta_gpa)
+  else{
+    mean_shape <- shapes::procGPA(X, scale = TRUE)$mshape
+    theta_gpa <- atan2(mean_shape[,2], mean_shape[,1])
+    theta_gpa <- ifelse(theta_gpa < 0, theta_gpa + 2*pi, theta_gpa)
+    orders <- order(theta_gpa)
+    X <- X[orders, , ]
+    mean_shape <- shapes::procGPA(X, scale = TRUE)$mshape
+    theta_gpa  <- atan2(mean_shape[,2], mean_shape[,1])
+    theta_gpa <- ifelse(theta_gpa < 0, theta_gpa + 2*pi, theta_gpa)
+  }
 
+  
   ## 1b. minimum gap between consecutive angles
-  g_min <- min_gap_frac * 2 * pi / k
-  theta <- spread_angles(theta_gpa, g_min)
-  moved <- max(abs(theta - theta_gpa))
+  # g_min <- min_gap_frac * 2 * pi / k
+  # theta <- spread_angles(theta_gpa, g_min)
+  # moved <- max(abs(theta - theta_gpa))
   
   ## 2. one single hyper (C_bar does not depend on psi); phi bounds from the spread angles
   a_phi <- 0.01                      # now >= g_min / 3
@@ -948,7 +955,7 @@ init_mu_star <- function(X,
                      # E[Sigma] = Sigma_target
   S_hat <- S_hat / (n * k)
   #hyper <- build_hyper((100 - 3) * S_hat)
-  hyper$min_gap <- g_min                              ## NEW: used by the theta sampler
+  # hyper$min_gap <- g_min                              ## NEW: used by the theta sampler
   #hyper$psi <- S_hat
   init <- init_param(tau0, lambda, theta_gpa, beta, S_hat, eta, alpha, gamma,
                      phi = phi0, n = n)
@@ -1225,10 +1232,12 @@ visualize_results <- function(output, hypers, X, file_name, sam = NULL){
       sigma_orig[, , isamp] <- t(rrr) %*% output$Sigma[isamp, , ] %*% rrr * output$alphas[isamp, iobs]^2
       mean_orig[, , isamp] <- output$mean[isamp, ,] # mean
       S <- S_mat_constructor(mean_orig[, , isamp])
-      warping <- S%*%output$W[[isamp]][,,iobs]
+      Wbar <- apply(output$W[[isamp]], c(1, 2), mean)   # media sulle osservazioni
+      SWbar <- matrix(apply(S %*% Wbar, MARGIN = 2, FUN = "mean"), ncol = 2, nrow = k, byrow = T)
+      warping <- S%*%output$W[[isamp]][,,iobs] - SWbar
       # Metto una coordinata a zero (Rimuovo traslazione)
-      mean_noloc[, , isamp] <- mean_orig[, , isamp] - matrix(mean_orig[pair[1], , isamp], nrow = k, ncol = 2, byrow = T)
-      warping <- warping - matrix(mean_orig[pair[1], , isamp], nrow = k, ncol = 2, byrow = T)
+      mean_noloc[, , isamp] <- mean_orig[, , isamp] - matrix(mean_orig[pair[1], , isamp], nrow = k, ncol = 2, byrow = T) + SWbar
+      warping <- warping
       mean_noloc_i[, , isamp] <- mean_noloc[, , isamp] + warping
       sigma_noloc[, , isamp] <- sigma_orig[, , isamp]
       
@@ -1455,3 +1464,24 @@ Rcpp::List units_loglik(const arma::mat& mean, const arma::mat& Dp,
                             Rcpp::Named("mean_i") = mean_i,
                             Rcpp::Named("residual") = resid);
 }')
+
+
+
+###### We add this function useful to place equispaced landmarks on a contour ##### 
+pick_landmarks <- function(M, top, bot, n_side = 11) { # this function is used to pick equispaced landmarks
+  k   <- nrow(M)
+  ord <- (seq_len(k) + top - 2) %% k + 1    
+  Mo  <- M[ord, ]
+  b   <- which(ord == bot)
+  
+  seg <- sqrt(rowSums((Mo[c(2:k, 1), ] - Mo)^2))
+  s   <- c(0, cumsum(seg))[1:k]               # arc length at each landmark
+  L   <- sum(seg)
+  s_b <- s[b]
+  
+  inner <- function(from, to) seq(from, to, length.out = n_side + 2)[-c(1, n_side + 2)]
+  targets <- c(0, inner(0, s_b), s_b, inner(s_b, L))
+  
+  idx <- sapply(targets, function(t) which.min(abs(s - t)))
+  ord[idx]
+}
