@@ -1375,12 +1375,10 @@ visualize_results <- function(output, hypers, X, file_name, sam = NULL){
     r_grid[s, ] <- as.numeric(exp(Basis_Construction(th_grid, hypers$n_basis, hypers$degree) %*% output$betas[s,]))
     curved[,,s] <- cbind(r_grid[s, ] * cos(th_grid), r_grid[s, ] * sin(th_grid))
   }
-  
+  mean_samp_mean
   mean_low <- apply(curved, c(1,2), quantile, probs = 0.025) # compute quantiles
   mean_high <- apply(curved, c(1,2), quantile, probs = 0.975)
   mean_samp_mean <- apply(curved, c(1,2), mean) # compute average value
-  
-  
   plot(mean_samp_mean, asp = 1, pch = 21, bg = "black",
        main = "Continous shape", xlim = range(mean_samp_mean[,1]) + c(-0.001, 0.001),
        ylim = range(mean_samp_mean[,2]) + c(-0.001, 0.001))
@@ -1398,6 +1396,11 @@ visualize_results <- function(output, hypers, X, file_name, sam = NULL){
       border = NA
     )
   }
+  mean_samp <- output$mean # common star shaped mean  [iter, k, 2]
+  mean_low <- apply(mean_samp, c(2,3), quantile, probs = 0.025) # compute quantiles
+  mean_high <- apply(mean_samp, c(2,3), quantile, probs = 0.975)
+  mean_samp_mean <- apply(mean_samp, c(2,3), mean) # compute average value
+  points(mean_samp_mean, pch = 16, col = "yellow", cex = 1.6)
   dev.off()
   
 }
