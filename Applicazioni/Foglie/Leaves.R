@@ -26,8 +26,10 @@ type_of_tree_sampled <- type_of_tree[s$idx]
 prop.table(table(type_of_tree_sampled))
 prop.table(table(data$treeID)/20)
 
-# save(total_leaves, final_array, type_of_tree_sampled,file = here("Leaves.RData"))
-# load(here("Leaves.RData"))
+# save(total_leaves, final_array, type_of_tree_sampled,file = here("Applicazioni/Foglie/Leaves.RData"))
+# load(here("Applicazioni/Foglie/Leaves.RData"))
+
+###### Model fit ###### 
 prova <- init_mu_star(final_array,n_basis = 18, degree = 3, start = "circle", ridge   = 1e-2, plot = TRUE,
                       Sigma_eta = diag(10, 2)) # we start from a circle
 
@@ -37,3 +39,7 @@ X <- prova$X # define X
 MCMC_leaves <- RB_MCMC(total_iter = 2e5, burnin = 1e5, thinning  = 100, X = X, 
                       init = init, hyper = hyper) # it takes a while, if you trust me you can find everything on the 
 # RData, otherwise you can easily wait.
+load(here("Applicazioni/Foglie/Leaves_MCMC.RData"))
+output <- MCMC_samp$output
+hypers <- MCMC_samp$hyper
+try(visualize_results(output, hypers, X, "Leaves"))

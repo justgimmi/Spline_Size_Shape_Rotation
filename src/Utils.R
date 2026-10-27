@@ -880,8 +880,14 @@ init_mu_star <- function(X,
   Rot <- function(l) matrix(c(cos(l), -sin(l), sin(l), cos(l)), 2, byrow = TRUE)
   ang <- function(M) atan2(M[, 2], M[, 1]) %% (2 * pi)
   if (start == "circle") {
-    theta_gpa <- runif(n = k, min = 0, max = 2*pi)
-    theta_gpa <- sort(theta_gpa)
+    mean_shape <- shapes::procGPA(X, scale = TRUE)$mshape
+    theta_gpa <- atan2(mean_shape[,2], mean_shape[,1])
+    theta_gpa <- ifelse(theta_gpa < 0, theta_gpa + 2*pi, theta_gpa)
+    orders <- order(theta_gpa)
+    X <- X[orders, , ]
+    mean_shape <- shapes::procGPA(X, scale = TRUE)$mshape
+    theta_gpa  <- atan2(mean_shape[,2], mean_shape[,1])
+    theta_gpa <- ifelse(theta_gpa < 0, theta_gpa + 2*pi, theta_gpa)
     
   }
   
