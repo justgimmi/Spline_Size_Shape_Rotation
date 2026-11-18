@@ -66,9 +66,10 @@ sample_Sigma <- function(init, hyper, k_l) {
   hyper$psi_post <- hyper$psi + psi_update
   
   # Sigma ~ IW(nu, psi)  <=>  Sigma^-1 ~ Wishart(nu, psi^-1)
-  init$Sigma_inv <- rWishart(1, hyper$nu_post, solve(hyper$psi_post))[, , 1]
-  init$Sigma     <- solve(init$Sigma_inv)
-  
+  #init$Sigma_inv <- rWishart(1, hyper$nu_post, solve(hyper$psi_post))[, , 1]
+  #init$Sigma     <- solve(init$Sigma_inv)
+  init$Sigma <- rinvwishart(nu = hyper$nu_post, hyper$psi_post)
+  init$Sigma_inv <- solve(init$Sigma)
   # Q_R_i = R_i' Sigma^-1 R_i / alpha_i^2, vectorised over i
   Si  <- init$Sigma_inv
   t11 <- cs^2 * Si[1, 1] + 2 * cs * sn * Si[1, 2] + sn^2 * Si[2, 2]

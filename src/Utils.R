@@ -155,10 +155,11 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
   mu_mean_x <- r*cos(thetas)
   mu_mean_y <- r*sin(thetas)
   mu_mean <- cbind(mu_mean_x, mu_mean_y) # mean configuration 
+  mu_mean <- mu_mean/centroid.size(mu_mean)
   k_free <- K_l - 3
   S_mat <- S_mat_constructor(mu_mean)
   D_p <- D_p_constructor(mu_mean, K_l)
-  V <- median(diag(D_p %*% S_mat %*% solve(t(D_p) %*% S_mat %*% D_p) %*% S_mat %*% t(D_p)))
+  V <- median(diag(S_mat %*% D_p %*% solve(t(D_p) %*% S_mat %*% D_p) %*% t(D_p) %*% S_mat))
   psi <- array(0, dim = c(k_free, 2, n))
   if (sigma_2 == 0 && indep_error == TRUE) {
     Precision <- diag(1, nrow = k_free)
@@ -208,12 +209,13 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
     mu_i[,,i] <- alphas[i]*(mu_mean + S_mat %*% W[,,i]) %*%R[,,i] + eta_matrix # compute the mean configuration for every unit
   }
   
-  s_x2 <- 9 * 1e-4
-  s_y2 <- 9 * 1e-4
-  rho <- 0.2 
+  s_x2 <- 9 * 1e-5
+  s_y2 <- 9 * 1e-5
+  rho <- 0.5 
   s_xy <- rho * sqrt(s_x2 * s_y2)
   S <- matrix(c(s_x2, s_xy,
                 s_xy, s_y2), nrow = 2, ncol = 2)
+  cc <- centroid.size(mu_mean)
   Sigma_e <- riwish(4, S)
   #Sigma_e <- diag(2)*0.00035
   X <- array(NA, dim = c(K_l, 2, n))
@@ -255,11 +257,16 @@ in_model_sample <- function(n = 1, K_l,  thetas = NA, n_int_knots, degree = 3, t
 }
 
 
+Rmat <- function(angle){
+  matrix(c(cos(angle), -sin(angle), sin(angle), cos(angle)), ncol = 2, nrow = 2,byrow = T)
+}
+
 
 sample_from_mean <- function(mean_shape, n, sigma_2, plot = TRUE){ # this functions can be used to sample directly from the model
   # mean_shape: star-shaped-mean given by the user
   # n: sample size
   k <- dim(mean_shape)[1]
+  mean_shape <- mean_shape/centroid.size(mean_shape)
   
   k_free <- k - 3 # free values 
   S_mat <- S_mat_constructor(mean_shape) # k x k matrix 
@@ -282,8 +289,8 @@ sample_from_mean <- function(mean_shape, n, sigma_2, plot = TRUE){ # this functi
   W <- tensor(D_p, psi, 2, 1) # define W_i for each unit
   R <- array(NA, dim = c(2, 2, n)) 
   mu_i <- array(NA, dim = c(k, 2, n))
-  lambda <- runif(n = n)*2*pi #generate rotation angles completely at random
-  alphas <- rgamma(n = n, shape = 3, rate = 0.5) # sample the size effect
+  lambda <- runif(n = n, min = 0, max = 1)*2*pi #generate rotation angles completely at random
+  alphas <- rgamma(n = n, shape = 3, rate = 2) # sample the size effect
   eta <- matrix(rnorm(n = n*2, sd = 2), ncol = 2) # sample the translation effect 
   if (sigma_2 != 0) {
     for (i in 1:n) { # compute rotation matrix 
@@ -302,13 +309,14 @@ sample_from_mean <- function(mean_shape, n, sigma_2, plot = TRUE){ # this functi
     }
     
   }
-  s_x2 <- 2 * 1e-5
-  s_y2 <- 2 * 1e-5
-  rho <- 0.2 
-  s_xy <- rho * sqrt(s_x2 * s_y2)
-  S <- matrix(c(s_x2, s_xy,
-                s_xy, s_y2), nrow = 2, ncol = 2)
-  Sigma_e <- riwish(4, S)
+  # s_x2 <- 5.2 * 1e-5
+  # s_y2 <- 5.2 * 1e-5
+  # rho <- 0.2 
+  # s_xy <- rho * sqrt(s_x2 * s_y2)
+  # S <- matrix(c(s_x2, s_xy,
+  #               s_xy, s_y2), nrow = 2, ncol = 2)
+  #Sigma_e <- riwish(4, S)
+  Sigma_e <- matrix(c(1.085813e-5, -2.060843e-6, -2.060843e-6, 1.421828e-5), nrow = 2, byrow = T)
   X <- array(NA, dim = c(k, 2, n))
   for (i in 1:n) {
     # to sample we use the fact that X \sim MN(mu_{i}, I_k, Sigma)
@@ -318,21 +326,33 @@ sample_from_mean <- function(mean_shape, n, sigma_2, plot = TRUE){ # this functi
   
   if (plot) {
     rot <- mean_shape
-    mu_i <- mu_i[,,1]
+    mu_ii <- mu_i[,,1]
     X_i <- X[,,1]
-    par(mfrow = c(1, 3))
-    plot(rot, asp = 1, pch = 21, bg = "darkgreen", main = "Latent mu")
-    lines(c(rot[,1], rot[1,1]), c(rot[,2], rot[1,2]), col = "forestgreen", lwd = 2)
+    k <- nrow(X_i)
+    aligned <- lapply(1:n, function(i)
+      ((X[, , i] - matrix(eta[i, ], k, 2, byrow = TRUE)) %*% t(Rmat(lambda[i]))) / alphas[i])
+    rng <- range(unlist(aligned), rot)
     
-    plot(mu_i, asp = 1, pch = 21, bg = "darkred", main = "mu for the first unit")
-    lines(c(mu_i[,1], mu_i[1,1]), c(mu_i[,2], mu_i[1,2]), col = "red", lwd = 2)
-    
-    
-    plot(X_i, asp = 1, pch = 21, bg = "darkred", main = " X_1 unit")
-    lines(c(X_i[,1], X_i[1,1]), c(X_i[,2], X_i[1,2]), col = "red", lwd = 2)
+    par(mfrow = c(1, 1))
+    plot(NA, xlim = rng, ylim = rng, asp = 1, xlab = "", ylab = "",
+         main = "Simulation Setup")
+    for (A in aligned) points(A, col = adjustcolor("grey40", 0.3), pch = 16, cex = 0.6)
+    lines(rbind(rot, rot[1,]), col = "red", lwd = 2)
+    points(rot, col = "red", pch = 19, cex = 0.5)
+    text(rot, labels = 1:k, pos = 3, cex = 0.7, col = "red")
+    # plot(rot, asp = 1, pch = 21, bg = "darkgreen", main = "Latent mu")
+    # lines(c(rot[,1], rot[1,1]), c(rot[,2], rot[1,2]), col = "forestgreen", lwd = 2)
+    # 
+    # plot(mu_i, asp = 1, pch = 21, bg = "darkred", main = "mu for the first unit")
+    # lines(c(mu_i[,1], mu_i[1,1]), c(mu_i[,2], mu_i[1,2]), col = "red", lwd = 2)
+    # 
+    # 
+    # plot(X_i, asp = 1, pch = 21, bg = "darkred", main = " X_1 unit")
+    # lines(c(X_i[,1], X_i[1,1]), c(X_i[,2], X_i[1,2]), col = "red", lwd = 2)
     
   }
   
+
   
   final_param <- list()
   final_param$mu <- mean_shape
@@ -352,11 +372,9 @@ sample_from_mean <- function(mean_shape, n, sigma_2, plot = TRUE){ # this functi
   
 }
 
-# MCMC Util functions ----
-Rmat <- function(angle) { # rotation matrix 
-  matrix(c(cos(angle), -sin(angle), sin(angle), cos(angle)), nrow = 2, ncol = 2, byrow = TRUE)
-}
 
+
+# MCMC Util functions ----
 
 # S_mat_constructor <- function(mu){
 #   # mu: value of the latent mean K \times K
@@ -607,8 +625,8 @@ hyperparameters <- function(a_tau, b_tau, n_basis, degree, nu, psi, n, a, b, Sig
   
   hyper$a_chi <- 2
   hyper$b_chi <- 2
-  hyper$a_s2 <- 1
-  hyper$b_s2 <- 1
+  hyper$a_s2 <- 10
+  hyper$b_s2 <- 1e-4
   return(hyper)
 }
 
@@ -669,12 +687,8 @@ compute_proc_dist <- function(init, X, X_pred){
   dis <- numeric(n)
   for (i in 1:n) {
     M_subject <- init$mean_i[,,i]
-    
-    # 2) Affine component
     alpha_i   <- init$alphas[i]
     lambda_i  <- init$lambdas[i]
-    
-    # 3) Rotation matrix 
     R_lambda <- Rmat(lambda_i)
     
     # 4) Spatial covariance
@@ -696,7 +710,7 @@ mean_constructor <- function(n_basis, degree, init, hyper, X){
   
   n <- init$n
   B_sim <- Basis_Construction(init$thetas, n_basis, degree) # build the basis with the current value of theta
-  init$r <- exp(B_sim %*% as.vector(init$betas))# compute the current value of the radius
+  init$r <- exp(B_sim %*% as.vector(init$betas) )# compute the current value of the radius
   mu_mean_x <- init$r*cos(init$thetas)
   mu_mean_y <- init$r*sin(init$thetas)
   mean <- cbind(mu_mean_x, mu_mean_y)
@@ -867,7 +881,7 @@ spread_angles <- function(theta, g_min){
 init_mu_star <- function(X,
                          n_basis = 12, degree = 3,
                          nu      = 4,
-                         a_tau   = 2, b_tau = 0.5,
+                         a_tau   = 1, b_tau = 1e-5,
                          start   = c("gpa", "circle"),
                          ridge   = 1e-1,
                          tau0    = c(0.1, 0.1), phi0 = NULL,
@@ -915,7 +929,7 @@ init_mu_star <- function(X,
     hyperparameters(a_tau, b_tau, n_basis, degree, nu = nu, psi = psi, n = n,
                     a = 0.1, b = 0.1, Sigma_eta = Sigma_eta,
                     a_phi = a_phi, b_phi = b_phi, X = X)
-  hyper <- build_hyper(diag(1, 2))
+  hyper <- build_hyper(diag(0.01, 2))
   
   ## 3. mu*: fit log r at the GPA angles, evaluate the curve at the spread angles
   B_fit <- Basis_Construction(theta_gpa, n_basis, degree)   ## NEW: fit where the radii were observed
@@ -929,7 +943,7 @@ init_mu_star <- function(X,
     gamma <- rep(0, ncol(hyper$C_bar))
   }
   beta <- as.vector(hyper$C_bar %*% gamma)
-  r    <- as.numeric(exp(B_fit %*% beta))
+  r    <- as.numeric(exp(B_fit %*% beta ))
   mu   <- cbind(r * cos(theta_gpa), r * sin(theta_gpa))
   mu_c <- scale(mu, scale = FALSE)
   cm   <- attr(mu_c, "scaled:center")
@@ -1224,32 +1238,43 @@ visualize_results <- function(output, hypers, X, file_name, sam = NULL){
   sigma_nosize <- array(NA, c(2, 2, nsamp))
   warp_mean <- array(NA, c(k, 2, n))
   pdf(paste(file_name, sep = "_mean_ident", ".pdf"), width = 15, height = 8.5) # open pdf
-  
+  krot <- pair[2]
+  for (isamp in 1:nsamp) {
+    mean_orig[, , isamp] <- output$mean[isamp, ,] # mean
+    S <- S_mat_constructor(mean_orig[, , isamp])
+    Wbar <- apply(output$W[[isamp]], c(1, 2), mean)   # media sulle osservazioni
+    SWbar <- matrix(apply(S %*% Wbar, MARGIN = 2, FUN = "mean"), ncol = 2, nrow = k, byrow = T)
+    mean_orig[, , isamp] <- output$mean[isamp, ,] + SWbar # mean
+    # Metto una coordinata a zero (Rimuovo traslazione)
+    mean_noloc[, , isamp] <- mean_orig[, , isamp] - matrix(mean_orig[pair[1], , isamp], nrow = k, ncol = 2, byrow = T) 
+    
+    angle <- atan2(mean_noloc[krot, 2, isamp], mean_noloc[krot, 1, isamp])
+    mean_norot[, , isamp] <- mean_noloc[, , isamp] %*% Rmat(angle)
+    normx <- norm(sweep(mean_norot[, , isamp], 2, colMeans(mean_norot[, , isamp])), "F")
+    
+    mean_nosize[, , isamp] <- mean_norot[, , isamp] / normx
+  }
+  mean_shape_posterior <- apply(mean_nosize, c(1, 2), mean)
   for (iobs in 1:n) {
     
     # 1. Feedback reale sulla console R
     cat(sprintf("\rElaborazione Unità: %3d", iobs))
     flush.console()
     
-    krot <- pair[2]
     for (isamp in 1:nsamp){
       ## Creo oggetti originali
-      rrr <- Rmat(output$lambdas[isamp, iobs])
-      sigma_orig[, , isamp] <- t(rrr) %*% output$Sigma[isamp, , ] %*% rrr * output$alphas[isamp, iobs]^2
-      mean_orig[, , isamp] <- output$mean[isamp, ,] # mean
       S <- S_mat_constructor(mean_orig[, , isamp])
       Wbar <- apply(output$W[[isamp]], c(1, 2), mean)   # media sulle osservazioni
       SWbar <- matrix(apply(S %*% Wbar, MARGIN = 2, FUN = "mean"), ncol = 2, nrow = k, byrow = T)
-      warping <- S%*%output$W[[isamp]][,,iobs] - SWbar
-      # Metto una coordinata a zero (Rimuovo traslazione)
-      mean_noloc[, , isamp] <- mean_orig[, , isamp] - matrix(mean_orig[pair[1], , isamp], nrow = k, ncol = 2, byrow = T) + SWbar
-      warping <- warping
-      mean_noloc_i[, , isamp] <- mean_noloc[, , isamp] + warping
+      normx <- norm(sweep(mean_norot[, , isamp], 2, colMeans(mean_norot[, , isamp])), "F")
+      rrr <- Rmat(output$lambdas[isamp, iobs])
+      sigma_orig[, , isamp] <- t(rrr) %*% output$Sigma[isamp, , ] %*% rrr * output$alphas[isamp, iobs]^2
       sigma_noloc[, , isamp] <- sigma_orig[, , isamp]
       
-      # Tolgo la rotazione
+      warping <- S%*%output$W[[isamp]][,,iobs] - SWbar
+      mean_noloc_i[, , isamp] <- mean_noloc[, , isamp] + warping
+      
       angle <- atan2(mean_noloc[krot, 2, isamp], mean_noloc[krot, 1, isamp])
-      mean_norot[, , isamp] <- mean_noloc[, , isamp] %*% Rmat(angle)
       warping <- warping %*% Rmat(angle)
       mean_norot_i[, , isamp] <- mean_norot[, , isamp] +  warping
       sigma_norot[, , isamp] <- t(Rmat(angle)) %*% sigma_noloc[, , isamp] %*% Rmat(angle)
@@ -1258,16 +1283,12 @@ visualize_results <- function(output, hypers, X, file_name, sam = NULL){
       #mean_norot[, , isamp] <- mean_norot[, , isamp] - matrix(colMeans(mean_norot[, , isamp]), nrow = k, ncol = 2, byrow = T)
       #mean_norot_i[, , isamp] <- mean_norot_i[, , isamp] - matrix(colMeans(mean_norot_i[, , isamp]), nrow = k, ncol = 2, byrow = T)
       # normx <- norm(mean_norot[, , isamp])
-      normx <- norm(sweep(mean_orig[, , isamp], 2, colMeans(mean_orig[, , isamp])), "F")
-      
-      mean_nosize[, , isamp] <- mean_norot[, , isamp] / normx
       warping <- warping/normx
       mean_nosize_i[, , isamp] <- mean_nosize[, , isamp] + warping
       sigma_nosize[, , isamp] <- sigma_norot[, , isamp] / normx^2
     }
     
     # Calcoliamo la forma media a posteriori per disegnare una linea guida pulita
-    mean_shape_posterior <- apply(mean_nosize, c(1, 2), mean)
     mean_shape_posterior_i <- apply(mean_nosize_i, c(1, 2), mean)
     warp_mean[, , iobs] <- mean_shape_posterior_i
     # ====================================================================
@@ -1432,11 +1453,24 @@ plot_status <- function(init_env, hyper_env, X, file, it, i_unit = 1) {
        xlab = "", ylab = "", main = sprintf("mu_%d", i_unit))
   
   # 3. X_i vs mu_i
+  alpha_i   <- init_env$alphas[i_unit]
+  lambda_i  <- init_env$lambdas[i_unit]
+  R_lambda <- Rmat(lambda_i)
+  k_l <- nrow(mu_i)
+  p <- 2
+  Sigma_spatial_i <- (alpha_i^2) * (t(R_lambda) %*% init_env$Sigma %*% R_lambda)
+  L_Sigma_spatial <- t(chol(Sigma_spatial_i)) 
+  Z <- matrix(rnorm(k_l * p), nrow = k_l, ncol = p)
+  # E_i <- chol(C) %*% Z %*% t(L_Sigma_spatial)
+  E_i <- Z %*% t(L_Sigma_spatial)
+  X_pred<- mu_i + E_i
+  
+  
   Xi <- X[, , i_unit]
   plot(closed(Xi), type = "o", pch = 21, bg = "black", asp = 1,
        xlim = range(Xi[, 1], mu_i[, 1]), ylim = range(Xi[, 2], mu_i[, 2]),
-       xlab = "", ylab = "", main = sprintf("X_%d (nero) vs mu_%d (rosso)", i_unit, i_unit))
-  lines(closed(mu_i), col = "red", lwd = 2)
+       xlab = "", ylab = "", main = sprintf("X_%d (nero) vs pred_%d (rosso)", i_unit, i_unit))
+  lines(closed(X_pred), col = "red", lwd = 2)
   
   # ok <- TRUE
 }
@@ -1494,3 +1528,25 @@ pick_landmarks <- function(M, top, bot, n_side = 11) { # this function is used t
   idx <- sapply(targets, function(t) which.min(abs(s - t)))
   ord[idx]
 }
+
+###### We add this function for the invariance check ######
+
+random_similarity <- function(X) {    # this function is used to sample inside the same equivalence class of the data!
+  # X: k x 2 x n
+  
+  k <- dim(X)[1] # number of landmarks
+  n <- dim(X)[3] # number of units 
+  theta <- runif(n, 0, 2 * pi) # new angle
+  lam   <- runif(n,0.5, 2) # new scale 
+  tr    <- matrix(rnorm(2 * n, 0, 5), n, 2) # new translation
+  
+  X_new <- X
+  for (i in seq_len(n)) {
+    R <- matrix(c(cos(theta[i]), sin(theta[i]),
+                  -sin(theta[i]), cos(theta[i])), 2, 2)
+    X_new[, , i] <- lam[i] * X[, , i] %*% t(R) +
+      matrix(tr[i, ], k, 2, byrow = TRUE)
+  }
+  
+  list(X = X_new, rotation = theta, scale = lam, translation = tr)
+} 

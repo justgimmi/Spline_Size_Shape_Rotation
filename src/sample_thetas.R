@@ -14,7 +14,7 @@ eval_log_lik_theta_joint <- function(theta_cand, init, hyper, candidate, X) {
   
   candidate$B_cand <- Basis_Construction(theta_cand, hyper$n_basis, hyper$degree) # construct the candidate basis
   candidate$B_sim <- candidate$B_cand %*% hyper$C_bar # apply the subspace representation
-  candidate$r_cand <- exp(candidate$B_sim %*% as.vector(init$gammas)) # propose a new radius
+  candidate$r_cand <- exp(candidate$B_sim %*% as.vector(init$gammas) ) # propose a new radius
   # Construct the global latent mean shape and updaye the relevant objects depending on \mu^*
   candidate$mean_cand <- cbind(candidate$r_cand*cos(theta_cand), candidate$r_cand*sin(theta_cand)) # proposed mean
   candidate$S_mat_cand <- S_mat_constructor(candidate$mean_cand) # proposed S(mu^*) 
